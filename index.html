@@ -187,6 +187,104 @@ header {
     border-color: #999;
 }
 
+/* =========================================================
+   文字サイズ
+========================================================= */
+
+.note-editor.font-large {
+    font-size: 21px;
+}
+
+.note-editor font[size="5"] {
+    font-size: 21px;
+}
+
+.note-editor font[size="3"] {
+    font-size: 16px;
+}
+
+.text-size-button.active {
+    font-weight: bold;
+    background: #dcdcdc;
+}
+
+/* 検索ハイライト */
+.search-highlight {
+    background: #fff176;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+/* 写真長押しメニュー */
+.photo-delete-menu {
+    position: fixed;
+    z-index: 1000;
+    display: none;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.2);
+    padding: 6px;
+}
+
+.photo-delete-menu button {
+    border: none;
+    background: transparent;
+    padding: 10px 14px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.photo-delete-menu button:hover {
+    background: #eee;
+    border-radius: 7px;
+}
+
+/* キーボード付近の写真ボタン */
+.mobile-photo-bar {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .mobile-photo-bar {
+        display: block;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+        background: rgba(250,250,250,0.96);
+        border-top: 1px solid #ddd;
+        transform: translateY(100%);
+        transition: transform 0.15s ease;
+    }
+
+    .mobile-photo-bar.visible {
+        transform: translateY(0);
+    }
+
+    .mobile-photo-bar button {
+        border: none;
+        background: #eee;
+        border-radius: 8px;
+        padding: 9px 13px;
+        font-size: 15px;
+    }
+}
+
+/* すべて開く・閉じる */
+.collapse-all-button {
+    float: right;
+    border: none;
+    background: #eee;
+    border-radius: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+
 .note-editor img {
     max-width: 100%;
     height: auto;
@@ -335,13 +433,26 @@ header {
 
     <div class="search-box">
 
-        <input
-            id="searchInput"
-            type="search"
-            placeholder="🔍 ノートを検索..."
-        >
+        <div style="display:flex; gap:6px;">
+            <input
+                id="searchInput"
+                type="search"
+                placeholder="🔍 ノートを検索..."
+                style="flex:1;"
+            >
+            <button
+                id="clearSearchButton"
+                type="button"
+                style="display:none; border:none; background:#eee; border-radius:8px; padding:0 12px;"
+            >✕</button>
+        </div>
 
     </div>
+
+    <div
+        id="headerControls"
+        style="margin-top:8px; overflow:hidden;"
+    ></div>
 
 </header>
 
@@ -364,6 +475,14 @@ header {
 
 </div>
 
+<div id="mobilePhotoBar" class="mobile-photo-bar">
+    <button id="mobilePhotoButton">📷 写真を追加</button>
+</div>
+
+<div id="photoDeleteMenu" class="photo-delete-menu">
+    <button id="deleteSelectedPhotoButton">🗑️ 写真を削除</button>
+</div>
+
 
 <script>
 
@@ -372,11 +491,12 @@ header {
 ========================================================= */
 
 const DB_NAME = "MyNoteDB";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const FOLDERS_STORE = "folders";
 const NOTES_STORE = "notes";
 const PHOTOS_STORE = "photos";
+const TRASH_STORE = "trash";
 
 let db = null;
 
@@ -440,6 +560,20 @@ function openDatabase() {
 
                 database.createObjectStore(
                     PHOTOS_STORE,
+                    {
+                        keyPath: "id"
+                    }
+                );
+            }
+
+            if (
+                !database.objectStoreNames.contains(
+                    TRASH_STORE
+                )
+            ) {
+
+                database.createObjectStore(
+                    TRASH_STORE,
                     {
                         keyPath: "id"
                     }
@@ -717,6 +851,401 @@ let draggedItem = null;
 
 let objectUrls = [];
 
+/* =========================================================
+   追加UIの状態
+========================================================= */
+
+let activeEditor = null;
+let activeEditorNote = null;
+let selectedPhoto = null;
+let selectedPhotoNote = null;
+let selectedPhotoEditor = null;
+let photoLongPressTimer = null;
+let currentSearchKeyword = "";
+
+/* =========================================================
+   ノートの文字サイズ設定
+========================================================= */
+
+function getNoteFontSize(note) {
+    return note.fontSize === "large" ? "large" : "normal";
+}
+
+function setNoteFontSize(note, size) {
+    note.fontSize = size === "large" ? "large" : "normal";
+}
+
+function updateInputSizeButton(button, note) {
+    if (!button) return;
+
+    const large = getNoteFontSize(note) === "large";
+
+    button.textContent = large
+        ? "🔤 入力：大"
+        : "🔤 入力：標準";
+
+    button.classList.toggle("active", large);
+}
+
+/* 選択範囲の文字サイズ変更 */
+function applySelectionFontSize(editor, size) {
+    if (!editor) return;
+
+    editor.focus();
+
+    const selection = window.getSelection();
+
+    if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        !editor.contains(selection.anchorNode) ||
+        !editor.contains(selection.focusNode) ||
+        selection.isCollapsed
+    ) {
+        return;
+    }
+
+    const range = selection.getRangeAt(0);
+
+    if (size === "large") {
+        document.execCommand("fontSize", false, "5");
+    } else {
+        document.execCommand("fontSize", false, "3");
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+/* =========================================================
+   写真の長押し削除
+========================================================= */
+
+function setupPhotoLongPress(img, note, editor) {
+    let timer = null;
+
+    const start = event => {
+        if (event.pointerType === "mouse") return;
+
+        clearTimeout(timer);
+
+        timer = setTimeout(() => {
+            selectedPhoto = img;
+            selectedPhotoNote = note;
+            selectedPhotoEditor = editor;
+
+            const menu = document.getElementById("photoDeleteMenu");
+            const rect = img.getBoundingClientRect();
+
+            menu.style.left =
+                Math.max(8, Math.min(
+                    window.innerWidth - 180,
+                    rect.left
+                )) + "px";
+
+            menu.style.top =
+                Math.max(8, rect.bottom - 45) + "px";
+
+            menu.style.display = "block";
+        }, 550);
+    };
+
+    const cancel = () => {
+        clearTimeout(timer);
+    };
+
+    img.addEventListener("pointerdown", start);
+    img.addEventListener("pointerup", cancel);
+    img.addEventListener("pointercancel", cancel);
+    img.addEventListener("pointermove", cancel);
+
+    img.addEventListener("contextmenu", event => {
+        event.preventDefault();
+    });
+}
+
+async function deleteSelectedPhoto() {
+    if (
+        !selectedPhoto ||
+        !selectedPhotoNote ||
+        !selectedPhotoEditor
+    ) {
+        return;
+    }
+
+    const photoId =
+        selectedPhoto.dataset.photoId;
+
+    if (!photoId) return;
+
+    const ok = confirm("この写真を削除しますか？");
+
+    if (!ok) return;
+
+    selectedPhoto.remove();
+
+    selectedPhotoNote.content =
+        selectedPhotoEditor.innerHTML;
+
+    await deleteData(
+        PHOTOS_STORE,
+        photoId
+    );
+
+    await saveNote(
+        selectedPhotoNote
+    );
+
+    closePhotoDeleteMenu();
+}
+
+function closePhotoDeleteMenu() {
+    const menu =
+        document.getElementById(
+            "photoDeleteMenu"
+        );
+
+    menu.style.display = "none";
+
+    selectedPhoto = null;
+    selectedPhotoNote = null;
+    selectedPhotoEditor = null;
+}
+
+/* =========================================================
+   検索ハイライト解除
+========================================================= */
+
+function clearSearchHighlight() {
+    document
+        .querySelectorAll(".search-highlight")
+        .forEach(mark => {
+            const parent = mark.parentNode;
+
+            while (mark.firstChild) {
+                parent.insertBefore(
+                    mark.firstChild,
+                    mark
+                );
+            }
+
+            parent.removeChild(mark);
+        });
+}
+
+/* 検索文字を本文にハイライト */
+function highlightKeyword(editor, keyword) {
+    if (!editor || !keyword) return;
+
+    const walker =
+        document.createTreeWalker(
+            editor,
+            NodeFilter.SHOW_TEXT
+        );
+
+    const textNodes = [];
+    let node;
+
+    while (
+        (node = walker.nextNode())
+    ) {
+        if (
+            node.parentElement &&
+            node.parentElement.closest(
+                ".search-highlight"
+            )
+        ) {
+            continue;
+        }
+
+        if (
+            node.nodeValue
+                .toLowerCase()
+                .includes(keyword.toLowerCase())
+        ) {
+            textNodes.push(node);
+        }
+    }
+
+    const lowerKeyword =
+        keyword.toLowerCase();
+
+    textNodes.forEach(textNode => {
+        let current = textNode;
+
+        while (current) {
+            const value = current.nodeValue || "";
+            const lower = value.toLowerCase();
+            const index = lower.indexOf(
+                lowerKeyword
+            );
+
+            if (index === -1) break;
+
+            const range =
+                document.createRange();
+
+            range.setStart(
+                current,
+                index
+            );
+
+            range.setEnd(
+                current,
+                index + keyword.length
+            );
+
+            const mark =
+                document.createElement(
+                    "span"
+                );
+
+            mark.className =
+                "search-highlight";
+
+            range.surroundContents(mark);
+
+            current =
+                mark.nextSibling;
+        }
+    });
+}
+
+/* 検索結果からノートを開いて該当箇所へ移動 */
+async function openSearchResult(note, keyword) {
+    currentFolderId =
+        note.folderId || null;
+
+    note.open = true;
+
+    const input =
+        document.getElementById(
+            "searchInput"
+        );
+
+    input.value = "";
+
+    currentSearchKeyword = "";
+
+    await saveNote(note);
+    await render();
+
+    requestAnimationFrame(() => {
+        const item =
+            Array.from(
+                document.querySelectorAll(
+                    "[data-note-id]"
+                )
+            ).find(
+                element =>
+                    element.dataset.noteId ===
+                    note.id
+            );
+
+        if (!item) return;
+
+        const editor =
+            item.querySelector(
+                ".note-editor"
+            );
+
+        if (!editor) return;
+
+        highlightKeyword(
+            editor,
+            keyword
+        );
+
+        const target =
+            editor.querySelector(
+                ".search-highlight"
+            );
+
+        if (target) {
+            target.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+        }
+
+        const clearButton =
+            document.getElementById(
+                "clearSearchButton"
+            );
+
+        if (clearButton) {
+            clearButton.style.display =
+                "inline-block";
+        }
+    });
+}
+
+/* =========================================================
+   すべて開く・閉じる
+========================================================= */
+
+async function setAllNotesOpen(open) {
+    const notes =
+        data.notes.filter(
+            note =>
+                (note.folderId || null) ===
+                currentFolderId
+        );
+
+    if (notes.length === 0) return;
+
+    notes.forEach(note => {
+        note.open = open;
+    });
+
+    await putMany(
+        NOTES_STORE,
+        notes
+    );
+
+    render();
+}
+
+function renderHeaderControls() {
+    const area =
+        document.getElementById(
+            "headerControls"
+        );
+
+    if (!area) return;
+
+    area.innerHTML = "";
+
+    const notes =
+        data.notes.filter(
+            note =>
+                (note.folderId || null) ===
+                currentFolderId
+        );
+
+    if (notes.length === 0) return;
+
+    const allOpen =
+        notes.every(note => note.open);
+
+    const button =
+        document.createElement("button");
+
+    button.className =
+        "collapse-all-button";
+
+    button.textContent =
+        allOpen
+            ? "すべて閉じる"
+            : "すべて開く";
+
+    button.onclick = () => {
+        setAllNotesOpen(!allOpen);
+    };
+
+    area.appendChild(button);
+}
+
 
 /* =========================================================
    ID
@@ -751,6 +1280,15 @@ async function loadData() {
             NOTES_STORE
         );
 
+
+    data.notes.forEach(note => {
+        if (
+            note.fontSize !== "large" &&
+            note.fontSize !== "normal"
+        ) {
+            note.fontSize = "normal";
+        }
+    });
 
     normalizeOrder();
 
@@ -946,6 +1484,8 @@ async function render() {
     revokeObjectUrls();
 
     renderBreadcrumb();
+
+    renderHeaderControls();
 
     await renderContent();
 
@@ -1306,6 +1846,8 @@ function setupTouchDrag(
 
                 dragging = true;
 
+                event.preventDefault();
+
                 handle.setPointerCapture(
                     event.pointerId
                 );
@@ -1388,6 +1930,24 @@ function setupTouchDrag(
 
 
             event.preventDefault();
+
+            /* 画面端で自動スクロール */
+            const edge = 70;
+
+            if (event.clientY < edge) {
+                window.scrollBy(
+                    0,
+                    -12
+                );
+            } else if (
+                event.clientY >
+                window.innerHeight - edge
+            ) {
+                window.scrollBy(
+                    0,
+                    12
+                );
+            }
 
 
             item.style.left =
@@ -1798,6 +2358,9 @@ function createFolderElement(
     item.className =
         "item";
 
+    item.dataset.folderId =
+        folder.id;
+
 
     const row =
         document.createElement(
@@ -2054,6 +2617,295 @@ async function renameFolder(
 }
 
 
+
+/* =========================================================
+   ゴミ箱
+========================================================= */
+
+async function moveToTrash(type, object, extra = {}) {
+    const clonedObject =
+        JSON.parse(
+            JSON.stringify(object)
+        );
+
+    const trashRecord = {
+        id: createId(),
+        originalId: object.id,
+        type,
+        object: clonedObject,
+        ...extra,
+        deletedAt: Date.now()
+    };
+
+    await putData(
+        TRASH_STORE,
+        trashRecord
+    );
+
+    return trashRecord;
+}
+
+async function restoreTrashItem(trashRecord) {
+    if (trashRecord.type === "note") {
+        await putData(
+            NOTES_STORE,
+            trashRecord.object
+        );
+
+        data.notes.push(
+            trashRecord.object
+        );
+
+        if (trashRecord.photos) {
+            for (const photo of trashRecord.photos) {
+                await putData(
+                    PHOTOS_STORE,
+                    photo
+                );
+            }
+        }
+    }
+
+    if (trashRecord.type === "folder") {
+        const folders =
+            trashRecord.object.folders || [];
+
+        const notes =
+            trashRecord.object.notes || [];
+
+        for (const folder of folders) {
+            await putData(
+                FOLDERS_STORE,
+                folder
+            );
+
+            data.folders.push(
+                folder
+            );
+        }
+
+        for (const note of notes) {
+            await putData(
+                NOTES_STORE,
+                note
+            );
+
+            data.notes.push(
+                note
+            );
+        }
+
+        const photos =
+            trashRecord.object.photos || [];
+
+        for (const photo of photos) {
+            await putData(
+                PHOTOS_STORE,
+                photo
+            );
+        }
+    }
+
+    await deleteData(
+        TRASH_STORE,
+        trashRecord.id
+    );
+
+    normalizeOrder();
+    await saveAllOrders();
+    renderTrash();
+}
+
+async function permanentlyDeleteTrashItem(
+    trashRecord
+) {
+    const ok =
+        confirm(
+            "このデータを完全に削除しますか？\nこの操作は元に戻せません。"
+        );
+
+    if (!ok) return;
+
+    if (trashRecord.type === "note") {
+        const ids =
+            extractPhotoIds(
+                trashRecord.object.content || ""
+            );
+
+        await deleteMany(
+            PHOTOS_STORE,
+            ids
+        );
+    }
+
+    if (trashRecord.type === "folder") {
+        const photos =
+            trashRecord.object.photos || [];
+
+        await deleteMany(
+            PHOTOS_STORE,
+            photos.map(photo => photo.id)
+        );
+    }
+
+    await deleteData(
+        TRASH_STORE,
+        trashRecord.id
+    );
+
+    renderTrash();
+}
+
+async function showTrash() {
+    const records =
+        await getAll(TRASH_STORE);
+
+    const content =
+        document.getElementById("content");
+
+    content.innerHTML = "";
+
+    const title =
+        document.createElement("div");
+
+    title.style.fontSize = "20px";
+    title.style.fontWeight = "bold";
+    title.style.marginBottom = "14px";
+    title.textContent = "🗑️ ゴミ箱";
+
+    content.appendChild(title);
+
+    const back =
+        document.createElement("button");
+
+    back.textContent = "← 戻る";
+    back.className = "collapse-all-button";
+    back.style.float = "none";
+    back.style.marginBottom = "12px";
+
+    back.onclick = () => {
+        render();
+    };
+
+    content.appendChild(back);
+
+    if (records.length === 0) {
+        const empty =
+            document.createElement("div");
+
+        empty.className = "empty";
+        empty.textContent =
+            "ゴミ箱は空です";
+
+        content.appendChild(empty);
+        return;
+    }
+
+    records
+        .sort(
+            (a,b) =>
+                b.deletedAt - a.deletedAt
+        )
+        .forEach(record => {
+            const item =
+                document.createElement("div");
+
+            item.className =
+                "item";
+
+            const row =
+                document.createElement("div");
+
+            row.className =
+                "item-row";
+
+            const name =
+                document.createElement("div");
+
+            name.className =
+                "item-main";
+
+            const obj =
+                record.object;
+
+            name.textContent =
+                record.type === "note"
+                    ? "📝 " + obj.title
+                    : "📁 " + (
+                        obj.name ||
+                        "フォルダ"
+                    );
+
+            const actions =
+                document.createElement("div");
+
+            actions.className =
+                "action-buttons";
+
+            const restore =
+                document.createElement(
+                    "button"
+                );
+
+            restore.textContent =
+                "↩️";
+
+            restore.title =
+                "復元";
+
+            restore.onclick = () => {
+                restoreTrashItem(record);
+            };
+
+            const remove =
+                document.createElement(
+                    "button"
+                );
+
+            remove.textContent =
+                "❌";
+
+            remove.title =
+                "完全に削除";
+
+            remove.onclick = () => {
+                permanentlyDeleteTrashItem(
+                    record
+                );
+            };
+
+            actions.appendChild(
+                restore
+            );
+
+            actions.appendChild(
+                remove
+            );
+
+            row.appendChild(name);
+            row.appendChild(actions);
+
+            item.appendChild(row);
+            content.appendChild(item);
+        });
+}
+
+function renderTrashButton(area) {
+    const trashButton =
+        document.createElement("button");
+
+    trashButton.textContent =
+        "🗑️ ゴミ箱";
+
+    trashButton.onclick =
+        showTrash;
+
+    area.appendChild(
+        trashButton
+    );
+}
+
+
 /* =========================================================
    フォルダ削除
 ========================================================= */
@@ -2064,27 +2916,28 @@ async function deleteFolder(
 
     const ok =
         confirm(
-            `"${folder.name}" を削除しますか？\n中にあるフォルダとノートも削除されます。`
+            `"${folder.name}" をゴミ箱に移動しますか？
+中にあるフォルダとノートもまとめて移動されます。`
         );
 
-
     if (!ok) {
-
         return;
-
     }
-
 
     const folderIds =
         getAllChildFolderIds(
             folder.id
         );
 
-
     folderIds.push(
         folder.id
     );
 
+    const foldersToDelete =
+        data.folders.filter(
+            f =>
+                folderIds.includes(f.id)
+        );
 
     const notesToDelete =
         data.notes.filter(
@@ -2094,51 +2947,58 @@ async function deleteFolder(
                 )
         );
 
+    const photos = [];
 
-    const noteIds =
-        notesToDelete.map(
-            note =>
-                note.id
-        );
-
-
-    const photoIds = [];
-
-
-    for (
-        const note of notesToDelete
-    ) {
-
+    for (const note of notesToDelete) {
         const ids =
             extractPhotoIds(
                 note.content || ""
             );
 
+        for (const id of ids) {
+            const photo =
+                await getById(
+                    PHOTOS_STORE,
+                    id
+                );
 
-        photoIds.push(
-            ...ids
-        );
-
+            if (photo) {
+                photos.push(photo);
+            }
+        }
     }
 
+    await moveToTrash(
+        "folder",
+        {
+            folders: foldersToDelete,
+            notes: notesToDelete,
+            name: folder.name,
+            id: folder.id
+        },
+        {
+            photos
+        }
+    );
 
     await deleteMany(
         FOLDERS_STORE,
         folderIds
     );
 
-
     await deleteMany(
         NOTES_STORE,
-        noteIds
+        notesToDelete.map(
+            note => note.id
+        )
     );
-
 
     await deleteMany(
         PHOTOS_STORE,
-        photoIds
+        photos.map(
+            photo => photo.id
+        )
     );
-
 
     data.folders =
         data.folders.filter(
@@ -2148,36 +3008,30 @@ async function deleteFolder(
                 )
         );
 
-
     data.notes =
         data.notes.filter(
             n =>
-                !noteIds.includes(
-                    n.id
+                !notesToDelete.some(
+                    note =>
+                        note.id === n.id
                 )
         );
-
 
     if (
         folderIds.includes(
             currentFolderId
         )
     ) {
-
         currentFolderId =
             folder.parentId ||
             null;
-
     }
 
-
     normalizeOrder();
-
 
     await saveAllOrders();
 
     render();
-
 }
 
 
@@ -2348,6 +3202,9 @@ async function createNoteElement(
 
     item.className =
         "item";
+
+    item.dataset.noteId =
+        note.id;
 
 
     const row =
@@ -2546,6 +3403,10 @@ async function createNoteElement(
             note.content ||
             "";
 
+        editor.classList.toggle(
+            "font-large",
+            getNoteFontSize(note) === "large"
+        );
 
         body.appendChild(
             editor
@@ -2561,6 +3422,82 @@ async function createNoteElement(
         tools.className =
             "note-tools";
 
+        const inputSizeButton =
+            document.createElement(
+                "button"
+            );
+
+        inputSizeButton.className =
+            "text-size-button";
+
+        updateInputSizeButton(
+            inputSizeButton,
+            note
+        );
+
+        inputSizeButton.onclick = async () => {
+            const next =
+                getNoteFontSize(note) === "large"
+                    ? "normal"
+                    : "large";
+
+            setNoteFontSize(
+                note,
+                next
+            );
+
+            editor.classList.toggle(
+                "font-large",
+                next === "large"
+            );
+
+            updateInputSizeButton(
+                inputSizeButton,
+                note
+            );
+
+            await saveNote(note);
+        };
+
+        const largeSelectionButton =
+            document.createElement(
+                "button"
+            );
+
+        largeSelectionButton.textContent =
+            "🔠 選択部分を大";
+
+        largeSelectionButton.onclick = () => {
+            applySelectionFontSize(
+                editor,
+                "large"
+            );
+
+            note.content =
+                editor.innerHTML;
+
+            saveNote(note);
+        };
+
+        const normalSelectionButton =
+            document.createElement(
+                "button"
+            );
+
+        normalSelectionButton.textContent =
+            "🔡 選択部分を標準";
+
+        normalSelectionButton.onclick = () => {
+            applySelectionFontSize(
+                editor,
+                "normal"
+            );
+
+            note.content =
+                editor.innerHTML;
+
+            saveNote(note);
+        };
 
         const photoButton =
             document.createElement(
@@ -2581,6 +3518,17 @@ async function createNoteElement(
 
         };
 
+        tools.appendChild(
+            inputSizeButton
+        );
+
+        tools.appendChild(
+            largeSelectionButton
+        );
+
+        tools.appendChild(
+            normalSelectionButton
+        );
 
         tools.appendChild(
             photoButton
@@ -2599,6 +3547,68 @@ async function createNoteElement(
 
         await hydratePhotos(
             editor
+        );
+
+        editor.querySelectorAll(
+            "img[data-photo-id]"
+        ).forEach(img => {
+            setupPhotoLongPress(
+                img,
+                note,
+                editor
+            );
+        });
+
+
+        editor.addEventListener(
+            "focus",
+            () => {
+                activeEditor = editor;
+                activeEditorNote = note;
+
+                const bar =
+                    document.getElementById(
+                        "mobilePhotoBar"
+                    );
+
+                if (bar) {
+                    bar.classList.add(
+                        "visible"
+                    );
+                }
+            }
+        );
+
+        editor.addEventListener(
+            "blur",
+            () => {
+                setTimeout(() => {
+                    const active =
+                        document.activeElement;
+
+                    if (
+                        active !== editor &&
+                        !(
+                            active &&
+                            active.closest &&
+                            active.closest(
+                                ".mobile-photo-bar"
+                            )
+                        )
+                    ) {
+                        const bar =
+                            document.getElementById(
+                                "mobilePhotoBar"
+                            );
+
+                        if (bar) {
+                            bar.classList.remove(
+                                "visible"
+                            );
+                        }
+                    }
+                }, 150);
+            }
         );
 
 
@@ -3018,51 +4028,61 @@ async function deleteNote(
 
     const ok =
         confirm(
-            `"${note.title}" を削除しますか？`
+            `"${note.title}" をゴミ箱に移動しますか？`
         );
 
-
     if (!ok) {
-
         return;
-
     }
-
 
     const photoIds =
         extractPhotoIds(
             note.content || ""
         );
 
+    const photos = [];
+
+    for (const photoId of photoIds) {
+        const photo =
+            await getById(
+                PHOTOS_STORE,
+                photoId
+            );
+
+        if (photo) {
+            photos.push(photo);
+        }
+    }
+
+    await moveToTrash(
+        "note",
+        note,
+        {
+            photos
+        }
+    );
 
     await deleteData(
         NOTES_STORE,
         note.id
     );
 
-
     await deleteMany(
         PHOTOS_STORE,
         photoIds
     );
 
-
     data.notes =
         data.notes.filter(
             n =>
-                n.id !==
-                note.id
+                n.id !== note.id
         );
-
 
     normalizeOrder();
 
-
     await saveAllOrders();
 
-
     render();
-
 }
 
 
@@ -3216,6 +4236,8 @@ async function addNote() {
         content: "",
 
         open: true,
+
+        fontSize: "normal",
 
         order:
             siblings.length
@@ -3459,6 +4481,57 @@ async function searchNotes(
 
 
 /* =========================================================
+   写真UIイベント
+========================================================= */
+
+document
+    .getElementById(
+        "mobilePhotoButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+            if (
+                activeEditor &&
+                activeEditorNote
+            ) {
+                insertPhoto(
+                    activeEditor,
+                    activeEditorNote
+                );
+            }
+        }
+    );
+
+document
+    .getElementById(
+        "deleteSelectedPhotoButton"
+    )
+    .addEventListener(
+        "click",
+        deleteSelectedPhoto
+    );
+
+document.addEventListener(
+    "pointerdown",
+    event => {
+        const menu =
+            document.getElementById(
+                "photoDeleteMenu"
+            );
+
+        if (
+            menu.style.display === "block" &&
+            !menu.contains(event.target) &&
+            event.target !== selectedPhoto
+        ) {
+            closePhotoDeleteMenu();
+        }
+    }
+);
+
+
+/* =========================================================
    検索イベント
 ========================================================= */
 
@@ -3473,6 +4546,21 @@ document
             const keyword =
                 event.target.value.trim();
 
+            currentSearchKeyword =
+                keyword;
+
+            const clearButton =
+                document.getElementById(
+                    "clearSearchButton"
+                );
+
+            if (clearButton) {
+                clearButton.style.display =
+                    keyword
+                        ? "block"
+                        : "none";
+            }
+
 
             if (keyword) {
 
@@ -3486,6 +4574,29 @@ document
 
             }
 
+        }
+    );
+
+document
+    .getElementById(
+        "clearSearchButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+            document.getElementById(
+                "searchInput"
+            ).value = "";
+
+            currentSearchKeyword = "";
+
+            clearSearchHighlight();
+
+            document.getElementById(
+                "clearSearchButton"
+            ).style.display = "none";
+
+            render();
         }
     );
 
@@ -3541,6 +4652,8 @@ function renderBottomButtons() {
     area.appendChild(
         noteButton
     );
+
+    renderTrashButton(area);
 
 }
 
@@ -3833,6 +4946,12 @@ async function migrateOldData() {
             content:
 
                 content,
+
+            fontSize:
+
+                oldNote.fontSize === "large"
+                    ? "large"
+                    : "normal",
 
             order:
 
