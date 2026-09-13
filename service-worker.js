@@ -1,5 +1,5 @@
 // Change RELEASE whenever publishing an application change.
-const RELEASE = "2026-09-13-4";
+const RELEASE = "2026-09-14-1";
 const PREFIX = "my-note-" + encodeURIComponent(self.registration.scope) + "-";
 const CACHE_NAME = PREFIX + RELEASE;
 const APP_FILES = ["./", "./index.html", "./manifest.json"];

@@ -240,38 +240,13 @@ header {
     border-radius: 7px;
 }
 
-/* キーボード付近の写真ボタン */
-.mobile-photo-bar {
-    display: none;
-}
-
-@media (max-width: 600px) {
-    .mobile-photo-bar {
-        display: block;
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 50;
-        padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
-        background: rgba(250,250,250,0.96);
-        border-top: 1px solid #ddd;
-        transform: translateY(100%);
-        transition: transform 0.15s ease;
-    }
-
-    .mobile-photo-bar.visible {
-        transform: translateY(0);
-    }
-
-    .mobile-photo-bar button {
-        border: none;
-        background: #eee;
-        border-radius: 8px;
-        padding: 9px 13px;
-        font-size: 15px;
-    }
-}
+/* Editing toolbar follows the visual viewport, not a fixed keyboard height. */
+.mobile-photo-bar { display:none; position:fixed; left:0; right:0; bottom:0; z-index:50; background:#fafafaf5; border-top:1px solid #ccc; padding:6px 10px calc(6px + env(safe-area-inset-bottom)); gap:8px; }
+.mobile-photo-bar.visible { display:flex; }
+.mobile-photo-bar.keyboard-visible { padding-bottom:6px; }
+.mobile-photo-bar button,.note-tools button { flex:1; min-height:44px; border:0; border-radius:8px; background:#eceef1; color:#222; font-size:17px; padding:6px 10px; }
+@media(min-width:601px) { .mobile-photo-bar { left:50%; right:auto; width:360px; transform:translateX(-50%); border:1px solid #ccc; border-radius:12px 12px 0 0; } }
+@media(max-width:600px) { .note-tools { display:none !important; } }
 
 /* すべて開く・閉じる */
 .collapse-all-button {
@@ -424,18 +399,14 @@ header {
 .note-editor.uniform-font.font-large, .note-editor.uniform-font.font-large * { font-size: 21px !important; }
 .note-tools button { min-height: 44px; }
 .note-tools { flex-wrap: wrap; }
-.paragraph-dialog { width:min(94vw,600px); max-height:85dvh; border:0; border-radius:16px; padding:16px; color:#222; }
-.paragraph-dialog::backdrop { background:#0008; }
-.paragraph-dialog-header { display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:-16px; background:white; padding:12px 0; z-index:1; }
-.paragraph-dialog h2 { font-size:18px; margin:0; }
-.paragraph-dialog button { min-height:44px; padding:10px 14px; border:1px solid #bbb; background:#f4f5f7; border-radius:8px; color:#222; font-size:16px; }
-.paragraph-choice { padding:12px; border:1px solid #ddd; border-radius:10px; margin:10px 0; }
-.paragraph-preview { white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; line-height:1.6; }
-.paragraph-choice img { width:72px; height:64px; object-fit:cover; margin:6px; }
-.paragraph-size-controls { display:flex; gap:10px; margin-top:10px; }
-.paragraph-size-controls button { flex:1; }
-.paragraph-size-controls button[aria-pressed="true"] { background:#e1edff; border-color:#3879bd; }
-.photo-position { display:block; width:100%; color:#155ca5 !important; background:#edf5ff !important; border-style:dashed !important; }
+header { transition:transform .16s ease; }
+header.header-hidden { transform:translateY(-105%); pointer-events:none; }
+.note-editor { font-size:16px; overflow-anchor:none; scroll-margin-top:170px; scroll-margin-bottom:var(--editing-inset,64px); }
+.search-highlight { background:#ffe100 !important; color:#831600 !important; outline:2px solid #ffab00; border-radius:2px; padding:0; }
+.sort-indicator { position:fixed; z-index:100; height:4px; background:#147de0; pointer-events:none; border-radius:3px; }
+.drag-handle { min-width:36px; min-height:44px; display:flex; align-items:center; justify-content:center; -webkit-touch-callout:none; }
+.dragging { opacity:.55; outline:2px dashed #147de0; }
+@media(prefers-reduced-motion:reduce) { header { transition:none; } }
 </style>
 </head>
 
@@ -491,10 +462,7 @@ header {
 
 </div>
 
-<div id="mobilePhotoBar" class="mobile-photo-bar">
-    <button id="mobileSizeButton">🔤 文字サイズ</button>
-    <button id="mobilePhotoButton">📷 写真を追加</button>
-</div>
+<div id="mobilePhotoBar" class="mobile-photo-bar"></div>
 
 <div id="photoDeleteMenu" class="photo-delete-menu">
     <button id="deleteSelectedPhotoButton">🗑️ 写真を削除</button>
@@ -858,148 +826,43 @@ function clearSearchHighlight() {
 /* 検索文字を本文にハイライト */
 function highlightKeyword(editor, keyword) {
     if (!editor || !keyword) return;
-
-    const walker =
-        document.createTreeWalker(
-            editor,
-            NodeFilter.SHOW_TEXT
-        );
-
-    const textNodes = [];
-    let node;
-
-    while (
-        (node = walker.nextNode())
-    ) {
-        if (
-            node.parentElement &&
-            node.parentElement.closest(
-                ".search-highlight"
-            )
-        ) {
-            continue;
-        }
-
-        if (
-            node.nodeValue
-                .toLowerCase()
-                .includes(keyword.toLowerCase())
-        ) {
-            textNodes.push(node);
+    clearSearchHighlight();
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const nodes = []; let node, text = '';
+    while ((node = walker.nextNode())) {
+        nodes.push({node,start:text.length,end:text.length + node.length}); text += node.data;
+    }
+    const matches = [], lower = text.toLowerCase(), term = keyword.toLowerCase();
+    for (let from = 0, index; (index = lower.indexOf(term,from)) !== -1; from = index + term.length) matches.push([index,index + term.length]);
+    // Work backwards so offsets in each original text node stay valid.
+    for (const [start,end] of matches.reverse()) {
+        for (const part of [...nodes].reverse()) {
+            const a = Math.max(start,part.start), b = Math.min(end,part.end);
+            if (a >= b) continue;
+            const range = document.createRange(); range.setStart(part.node,a-part.start); range.setEnd(part.node,b-part.start);
+            const mark = document.createElement('span'); mark.className = 'search-highlight'; range.surroundContents(mark);
         }
     }
-
-    const lowerKeyword =
-        keyword.toLowerCase();
-
-    textNodes.forEach(textNode => {
-        let current = textNode;
-
-        while (current) {
-            const value = current.nodeValue || "";
-            const lower = value.toLowerCase();
-            const index = lower.indexOf(
-                lowerKeyword
-            );
-
-            if (index === -1) break;
-
-            const range =
-                document.createRange();
-
-            range.setStart(
-                current,
-                index
-            );
-
-            range.setEnd(
-                current,
-                index + keyword.length
-            );
-
-            const mark =
-                document.createElement(
-                    "span"
-                );
-
-            mark.className =
-                "search-highlight";
-
-            range.surroundContents(mark);
-
-            current =
-                mark.nextSibling;
-        }
-    });
 }
 
-/* 検索結果からノートを開いて該当箇所へ移動 */
 async function openSearchResult(note, keyword) {
-    currentFolderId =
-        note.folderId || null;
-
-    note.open = true;
-
-    const input =
-        document.getElementById(
-            "searchInput"
-        );
-
-    input.value = "";
-
-    currentSearchKeyword = "";
-
-    await saveNote(note);
-    await render();
-
-    requestAnimationFrame(() => {
-        const item =
-            Array.from(
-                document.querySelectorAll(
-                    "[data-note-id]"
-                )
-            ).find(
-                element =>
-                    element.dataset.noteId ===
-                    note.id
-            );
-
-        if (!item) return;
-
-        const editor =
-            item.querySelector(
-                ".note-editor"
-            );
-
-        if (!editor) return;
-
-        highlightKeyword(
-            editor,
-            keyword
-        );
-
-        const target =
-            editor.querySelector(
-                ".search-highlight"
-            );
-
-        if (target) {
-            target.scrollIntoView({
-                behavior: "smooth",
-                block: "center"
-            });
-        }
-
-        const clearButton =
-            document.getElementById(
-                "clearSearchButton"
-            );
-
-        if (clearButton) {
-            clearButton.style.display =
-                "inline-block";
-        }
-    });
+    currentFolderId = note.folderId || null; note.open = true;
+    document.getElementById('searchInput').value = '';
+    currentSearchKeyword = '';
+    await saveNote(note); await render();
+    const item = [...document.querySelectorAll('[data-note-id]')].find(el => el.dataset.noteId === note.id);
+    if (!item) return;
+    const editor = item.querySelector('.note-editor');
+    // Photos above the match must settle before measuring its position.
+    await Promise.all([...editor.querySelectorAll('img')].map(img => img.decode?.().catch(()=>{}) || Promise.resolve()));
+    if (!editor.isConnected) return;
+    highlightKeyword(editor,keyword);
+    const target = editor.querySelector('.search-highlight') || item.querySelector('.note-title');
+    document.querySelector('header').classList.remove('header-hidden');
+    await new Promise(requestAnimationFrame);
+    target.scrollIntoView({behavior:'auto',block:'center'});
+    headerScrollY = scrollY;
+    document.getElementById('clearSearchButton').style.display = 'inline-block';
 }
 
 /* =========================================================
@@ -1302,7 +1165,11 @@ function sortNotes(notes) {
 ========================================================= */
 
 async function render() {
-    closeParagraphDialog();
+    const revision = ++renderRevision;
+    const oldY = scrollY;
+    const contentElement = document.getElementById("content");
+    contentElement.style.minHeight = contentElement.offsetHeight + "px";
+
     activeEditor = null;
     activeEditorNote = null;
     closePhotoDeleteMenu();
@@ -1317,6 +1184,7 @@ async function render() {
     await renderContent();
 
     renderBottomButtons();
+    if (revision === renderRevision) { contentElement.style.minHeight = ""; window.scrollTo(0,oldY); }
 
 }
 
@@ -1501,516 +1369,72 @@ async function renderContent() {
    ドラッグ共通
 ========================================================= */
 
-function setupDragEvents(
-    item,
-    type,
-    object
-) {
-
-    const handle =
-        item.querySelector(
-            ".drag-handle"
-        );
-
-
-    handle.draggable = true;
-
-
-    handle.addEventListener(
-        "dragstart",
-        event => {
-
-            draggedItem = {
-
-                type: type,
-
-                id: object.id
-
-            };
-
-
-            item.classList.add(
-                "dragging"
-            );
-
-
-            event.dataTransfer.effectAllowed =
-                "move";
-
+function setupDragEvents(item, type, object) {
+    const handle = item.querySelector('.drag-handle');
+    if (!handle) return;
+    handle.draggable = false;
+    handle.style.touchAction = 'none';
+    handle.setAttribute('aria-label', (type === 'folder' ? object.name : object.title) + 'を長押しして並び替え');
+    let press = null, timer = null, frame = null, indicator = null, targetIndex = 0;
+    const peers = () => [...item.parentElement.children].filter(el => el !== item && el.dataset.sortType === type);
+    item.dataset.sortType = type;
+    const position = () => {
+        if (!press?.active || !item.isConnected) return;
+        const others = peers();
+        targetIndex = others.filter(el => press.y > el.getBoundingClientRect().top + el.querySelector('.item-row').getBoundingClientRect().height / 2).length;
+        const before = others[targetIndex];
+        const rect = before ? before.getBoundingClientRect() : (others.at(-1) || item).getBoundingClientRect();
+        indicator.style.top = `${before ? rect.top : rect.bottom}px`;
+        indicator.style.left = `${rect.left}px`; indicator.style.width = `${rect.width}px`;
+    };
+    const tick = () => {
+        if (!press?.active) return;
+        const limit = window.visualViewport?.height || innerHeight;
+        if (press.y < 70) scrollBy(0,-9);
+        else if (press.y > limit - 70) scrollBy(0,9);
+        position(); frame = requestAnimationFrame(tick);
+    };
+    const start = () => {
+        if (!press) return;
+        press.active = true; dragActive = true;
+        item.classList.add('dragging');
+        indicator = document.createElement('div'); indicator.className = 'sort-indicator'; document.body.append(indicator);
+        position(); frame = requestAnimationFrame(tick);
+    };
+    const finish = async (cancelled) => {
+        clearTimeout(timer); cancelAnimationFrame(frame);
+        const previous = press; press = null; dragActive = false;
+        indicator?.remove(); indicator = null; item.classList.remove('dragging');
+        if (!previous?.active || cancelled || !item.isConnected) return;
+        const others = peers(), before = others[targetIndex];
+        // Persist first; failed saves must not leave the visible order changed.
+        if (type === 'folder') await reorderFoldersByIndex(object.id, targetIndex);
+        else await reorderNotesByIndex(object.id, targetIndex);
+        if (before) before.before(item);
+        else if (others.length) others.at(-1).after(item);
+    };
+    handle.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || press) return;
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        press = {id:event.pointerId, x:event.clientX, y:event.clientY, originX:event.clientX, originY:event.clientY, active:false, mouse:event.pointerType === 'mouse'};
+        if (!press.mouse) timer = setTimeout(start, 350);
+    });
+    handle.addEventListener('pointermove', event => {
+        if (!press || press.id !== event.pointerId) return;
+        press.x = event.clientX; press.y = event.clientY;
+        const moved = Math.hypot(press.x - press.originX, press.y - press.originY);
+        if (!press.active && moved > 8) {
+            if (press.mouse) start();
+            else { finish(true); return; }
         }
-    );
-
-
-    handle.addEventListener(
-        "dragend",
-        () => {
-
-            draggedItem = null;
-
-            item.classList.remove(
-                "dragging"
-            );
-
-        }
-    );
-
-
-    item.addEventListener(
-        "dragover",
-        event => {
-
-            event.preventDefault();
-
-            item.classList.add(
-                "drag-over"
-            );
-
-        }
-    );
-
-
-    item.addEventListener(
-        "dragleave",
-        () => {
-
-            item.classList.remove(
-                "drag-over"
-            );
-
-        }
-    );
-
-
-    item.addEventListener(
-        "drop",
-        event => {
-
-            event.preventDefault();
-
-            item.classList.remove(
-                "drag-over"
-            );
-
-
-            if (!draggedItem) {
-
-                return;
-
-            }
-
-
-            if (
-                draggedItem.type ===
-                type &&
-                draggedItem.id !==
-                object.id
-            ) {
-
-                if (
-                    type ===
-                    "folder"
-                ) {
-
-                    moveFolderBefore(
-                        draggedItem.id,
-                        object.id
-                    );
-
-                } else {
-
-                    moveNoteBefore(
-                        draggedItem.id,
-                        object.id
-                    );
-
-                }
-
-            }
-
-        }
-    );
-
+        if (press.active) { event.preventDefault(); position(); }
+    });
+    handle.addEventListener('pointerup', () => finish(false));
+    handle.addEventListener('pointercancel', () => finish(true));
+    handle.addEventListener('lostpointercapture', () => { if (press) finish(true); });
+    handle.addEventListener('contextmenu', event => event.preventDefault());
 }
-
-/* =========================================================
-   スマホ用長押しドラッグ
-========================================================= */
-
-function setupTouchDrag(
-    item,
-    type,
-    object
-) {
-
-    const handle =
-        item.querySelector(".drag-handle");
-
-    if (!handle) {
-        return;
-    }
-
-    let pressTimer = null;
-    let dragging = false;
-    let placeholder = null;
-    let startX = 0;
-    let startY = 0;
-
-    handle.addEventListener(
-        "pointerdown",
-        event => {
-
-            /*
-             * マウスの場合は通常のHTML5ドラッグを使う
-             */
-            if (event.pointerType === "mouse") {
-                return;
-            }
-
-            startX = event.clientX;
-            startY = event.clientY;
-
-            pressTimer = setTimeout(() => {
-
-                dragging = true;
-
-                event.preventDefault();
-
-                handle.setPointerCapture(
-                    event.pointerId
-                );
-
-                item.classList.add(
-                    "touch-dragging"
-                );
-
-                placeholder =
-                    document.createElement(
-                        "div"
-                    );
-
-                placeholder.className =
-                    "touch-placeholder";
-
-                item.parentNode.insertBefore(
-                    placeholder,
-                    item
-                );
-
-                /*
-                 * 元の場所を確保したまま
-                 * itemを少し浮かせる
-                 */
-                item.style.position =
-                    "fixed";
-
-                item.style.width =
-                    placeholder.offsetWidth + "px";
-
-                item.style.left =
-                    placeholder.getBoundingClientRect().left + "px";
-
-                item.style.top =
-                    placeholder.getBoundingClientRect().top + "px";
-
-                item.style.pointerEvents =
-                    "none";
-
-            }, 350);
-
-        }
-    );
-
-
-    handle.addEventListener(
-        "pointermove",
-        event => {
-
-            if (!dragging) {
-
-                /*
-                 * 長押し前に大きく動いたら
-                 * 通常のスクロールと判断
-                 */
-                const dx =
-                    Math.abs(
-                        event.clientX - startX
-                    );
-
-                const dy =
-                    Math.abs(
-                        event.clientY - startY
-                    );
-
-                if (
-                    dx > 10 ||
-                    dy > 10
-                ) {
-
-                    clearTimeout(
-                        pressTimer
-                    );
-
-                }
-
-                return;
-            }
-
-
-            event.preventDefault();
-
-            /* 画面端で自動スクロール */
-            const edge = 70;
-
-            if (event.clientY < edge) {
-                window.scrollBy(
-                    0,
-                    -12
-                );
-            } else if (
-                event.clientY >
-                window.innerHeight - edge
-            ) {
-                window.scrollBy(
-                    0,
-                    12
-                );
-            }
-
-
-            item.style.left =
-                (
-                    event.clientX -
-                    item.offsetWidth / 2
-                ) + "px";
-
-
-            item.style.top =
-                (
-                    event.clientY -
-                    25
-                ) + "px";
-
-
-            const elements =
-                Array.from(
-                    item.parentNode.children
-                ).filter(
-                    element =>
-                        element !== item &&
-                        element !== placeholder &&
-                        element.classList.contains(
-                            "item"
-                        )
-                );
-
-
-            let target = null;
-
-
-            for (
-                const element of elements
-            ) {
-
-                const rect =
-                    element.getBoundingClientRect();
-
-
-                if (
-                    event.clientY <
-                    rect.top +
-                    rect.height / 2
-                ) {
-
-                    target = element;
-
-                    break;
-                }
-
-            }
-
-
-            if (target) {
-
-                item.parentNode.insertBefore(
-                    placeholder,
-                    target
-                );
-
-            } else {
-
-                item.parentNode.appendChild(
-                    placeholder
-                );
-
-            }
-
-        }
-    );
-
-
-    handle.addEventListener(
-        "pointerup",
-        async event => {
-
-            clearTimeout(
-                pressTimer
-            );
-
-
-            if (!dragging) {
-                return;
-            }
-
-
-            dragging = false;
-
-
-            item.style.position =
-                "";
-
-            item.style.width =
-                "";
-
-            item.style.left =
-                "";
-
-            item.style.top =
-                "";
-
-            item.style.pointerEvents =
-                "";
-
-
-            item.classList.remove(
-                "touch-dragging"
-            );
-
-
-            /*
-             * placeholderの位置から
-             * 新しい順番を作る
-             */
-            const parent =
-                placeholder.parentNode;
-
-
-            const elements =
-                Array.from(
-                    parent.children
-                ).filter(
-                    element =>
-                        element.classList.contains(
-                            "item"
-                        )
-                );
-
-
-            let newIndex =
-                elements.indexOf(
-                    item
-                );
-
-
-            /*
-             * item自体はDOM上では元の位置なので、
-             * placeholder位置から計算する
-             */
-            const placeholderIndex =
-                Array.from(
-                    parent.children
-                ).indexOf(
-                    placeholder
-                );
-
-
-            newIndex =
-                placeholderIndex;
-
-
-            placeholder.replaceWith(
-                item
-            );
-
-
-            if (type === "folder") {
-
-                await reorderFoldersByIndex(
-                    object.id,
-                    newIndex
-                );
-
-            } else {
-
-                await reorderNotesByIndex(
-                    object.id,
-                    newIndex
-                );
-
-            }
-
-
-            render();
-
-        }
-    );
-
-
-    handle.addEventListener(
-        "pointercancel",
-        () => {
-
-            clearTimeout(
-                pressTimer
-            );
-
-            if (!dragging) {
-                return;
-            }
-
-
-            dragging = false;
-
-
-            item.style.position =
-                "";
-
-            item.style.width =
-                "";
-
-            item.style.left =
-                "";
-
-            item.style.top =
-                "";
-
-            item.style.pointerEvents =
-                "";
-
-
-            item.classList.remove(
-                "touch-dragging"
-            );
-
-
-            if (placeholder) {
-
-                placeholder.replaceWith(
-                    item
-                );
-
-            }
-
-        }
-    );
-
-    /* スマホ用長押しドラッグ */
-    setupTouchDrag(
-        item,
-        type,
-        object
-    );
-}
-
 
 /* =========================================================
    フォルダを指定位置へ移動
@@ -2515,7 +1939,7 @@ async function permanentlyDeleteTrashItem(
 }
 
 async function showTrash() {
-    closeParagraphDialog();
+
     const records =
         await getAll(TRASH_STORE);
 
@@ -3005,19 +2429,7 @@ async function createNoteElement(
         note.title;
 
 
-    title.onclick = async () => {
-
-    note.open =
-        !note.open;
-
-    await saveNote(
-        note
-    );
-
-    await render();
-
-};
-
+    title.onclick = () => toggleNoteInline(note, item);
 
     main.appendChild(
         title
@@ -3164,7 +2576,7 @@ async function createNoteElement(
         tools.className =
             "note-tools";
 
-        attachParagraphTools(editor, note, tools);
+        setupEditor(editor, note, tools);
 
         body.insertBefore(tools, editor);
 
@@ -3189,62 +2601,6 @@ async function createNoteElement(
         });
 
 
-        editor.addEventListener(
-            "focus",
-            () => {
-                activeEditor = editor;
-                activeEditorNote = note;
-
-                const bar =
-                    document.getElementById(
-                        "mobilePhotoBar"
-                    );
-
-                if (bar) {
-                    bar.classList.add(
-                        "visible"
-                    );
-                }
-            }
-        );
-
-        editor.addEventListener(
-            "blur",
-            () => {
-                setTimeout(() => {
-                    const active =
-                        document.activeElement;
-
-                    if (
-                        active !== editor &&
-                        !(
-                            active &&
-                            active.closest &&
-                            active.closest(
-                                ".mobile-photo-bar"
-                            )
-                        )
-                    ) {
-                        const bar =
-                            document.getElementById(
-                                "mobilePhotoBar"
-                            );
-
-                        if (bar) {
-                            bar.classList.remove(
-                                "visible"
-                            );
-                        }
-                    }
-                }, 150);
-            }
-        );
-
-
-        editor.addEventListener("input", () => {
-            note.content = serializeEditor(editor);
-            saveNote(note);
-        });
 
     }
 
@@ -3281,174 +2637,41 @@ async function saveNote(
    写真追加
 ========================================================= */
 
-function insertPhoto(
-    editor,
-    note,
-    chosenRange = null
-) {
-    const selectionBeforePicker = window.getSelection();
-    const insertionRange = chosenRange || (selectionBeforePicker?.rangeCount &&
-        editor.contains(selectionBeforePicker.anchorNode) && editor.contains(selectionBeforePicker.focusNode)
-        ? selectionBeforePicker.getRangeAt(0).cloneRange() : null);
-
-    const input =
-        document.createElement(
-            "input"
-        );
-
-
-    input.type =
-        "file";
-
-
-    input.accept =
-        "image/*";
-
-
-    input.onchange =
-        async event => {
-
-            const file =
-                event.target.files[0];
-
-
-            if (!file || !editor.isConnected || !data.notes.some(n => n.id === note.id)) {
-
-                return;
-
-            }
-
-
-            try {
-
-                const photoId =
-                    createId();
-
-
-                const photo = {
-
-                    id: photoId,
-
-                    blob: file,
-
-                    name:
-                        file.name,
-
-                    type:
-                        file.type,
-
-                    createdAt:
-                        Date.now()
-
-                };
-
-
-                await putData(
-                    PHOTOS_STORE,
-                    photo
-                );
-
-
-                const img =
-                    document.createElement(
-                        "img"
-                    );
-
-
-                img.dataset.photoId =
-                    photoId;
-
-
-                const objectUrl =
-                    URL.createObjectURL(
-                        file
-                    );
-
-
-                objectUrls.push(
-                    objectUrl
-                );
-
-
-                img.src =
-                    objectUrl;
-                setupPhotoLongPress(img, note, editor);
-
-
-                const selection =
-                    window.getSelection();
-
-
-                if (
-                    insertionRange && editor.contains(insertionRange.startContainer) && editor.contains(insertionRange.endContainer)
-                ) {
-
-                    const range = insertionRange;
-
-
-                    range.deleteContents();
-
-
-                    range.insertNode(
-                        img
-                    );
-
-
-                    range.setStartAfter(
-                        img
-                    );
-
-
-                    range.collapse(
-                        true
-                    );
-
-
-                    selection.removeAllRanges();
-
-
-                    selection.addRange(
-                        range
-                    );
-
-                } else {
-
-                    editor.appendChild(
-                        img
-                    );
-
-                }
-
-
-                note.content =
-                    serializeEditor(editor);
-
-
-                await saveNote(
-                    note
-                );
-
-            } catch (error) {
-
-                console.error(
-                    "写真保存エラー",
-                    error
-                );
-
-
-                alert(
-                    "写真の保存に失敗しました。"
-                );
-
-            }
-
-        };
-
-
+function insertPhoto(editor, note, chosenRange = null) {
+    if (!editor?.isConnected) return;
+    rememberCaret(editor);
+    const insertionRange = chosenRange || editorStates.get(editor)?.range?.cloneRange();
+    if (insertionRange) insertionRange.collapse(false);
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
+    photoPickerOpen = true;
+    input.addEventListener('cancel', () => { photoPickerOpen = false; restoreCaret(editor); updateEditingBar(); });
+    input.onchange = async event => {
+        const file = event.target.files[0];
+        photoPickerOpen = false;
+        if (!file || !editor.isConnected || !data.notes.some(n => n.id === note.id)) { updateEditingBar(); return; }
+        const img = document.createElement('img');
+        const photoId = createId(); img.dataset.photoId = photoId;
+        const url = URL.createObjectURL(file); objectUrls.push(url); img.src = url;
+        try {
+            const range = insertionRange && editor.contains(insertionRange.startContainer) ? insertionRange : document.createRange();
+            if (range !== insertionRange) { range.selectNodeContents(editor); range.collapse(false); }
+            range.insertNode(img); range.setStartAfter(img); range.collapse(true);
+            editorStates.get(editor).range = range.cloneRange();
+            setupPhotoLongPress(img,note,editor);
+            note.content = serializeEditor(editor);
+            await writeBatch([
+                {store:PHOTOS_STORE, action:'put', value:{id:photoId,blob:file,name:file.name,type:file.type,createdAt:Date.now()}},
+                {store:NOTES_STORE, action:'put', value:note}
+            ]);
+            // Returning from the native picker may require another tap on iOS to show the keyboard.
+            restoreCaret(editor); applyTypingSize(editor); updateEditingBar();
+        } catch (error) {
+            img.remove(); note.content = serializeEditor(editor); URL.revokeObjectURL(url);
+            console.error(error); alert('写真を保存できませんでした。本文はそのままです。');
+        }
+    };
     input.click();
-
 }
-
 
 /* =========================================================
    写真を表示
@@ -4065,26 +3288,6 @@ async function searchNotes(
 /* =========================================================
    写真UIイベント
 ========================================================= */
-document.getElementById("mobileSizeButton").addEventListener("pointerdown", e => e.preventDefault());
-document.getElementById("mobileSizeButton").onclick = () => openParagraphDialog(activeEditor, activeEditorNote, "size");
-document.getElementById("mobilePhotoButton").addEventListener("pointerdown", e => e.preventDefault());
-
-document
-    .getElementById(
-        "mobilePhotoButton"
-    )
-    .addEventListener(
-        "click",
-        () => {
-            if (
-                activeEditor &&
-                activeEditorNote
-            ) {
-                openParagraphDialog(activeEditor, activeEditorNote, "photo");
-            }
-        }
-    );
-
 document
     .getElementById(
         "deleteSelectedPhotoButton"
@@ -4178,7 +3381,7 @@ document
                 "clearSearchButton"
             ).style.display = "none";
 
-            render();
+            if (!document.querySelector(".note-editor")) render();
         }
     );
 
@@ -4235,7 +3438,7 @@ function renderBottomButtons() {
         noteButton
     );
 
-    renderTrashButton(area);
+    if (currentFolderId === null) renderTrashButton(area);
 
 }
 
@@ -4636,151 +3839,187 @@ function dataUrlToBlob(
    起動
 ========================================================= */
 
-/* Tap-based paragraph formatting and explicit photo insertion positions. */
-let paragraphDialog = null;
-const paragraphSelector = 'p,div,li,h1,h2,h3,h4,h5,h6,blockquote,pre';
+/* Editing UI only. Stored notes retain their HTML and photo IDs. */
+const editorStates = new WeakMap();
+let composing = false;
+let photoPickerOpen = false;
+let dragActive = false;
+let renderRevision = 0;
 
-function paragraphBlocks(editor) {
-    // Wrap only loose top-level text/inline runs. Existing blocks and photos survive.
-    let run = null;
-    for (const node of [...editor.childNodes]) {
-        if (node.nodeType === 1 && node.matches(paragraphSelector + ',ul,ol,table,hr')) {
-            run = null;
-        } else if (node.nodeName === 'BR') {
-            if (!run) { run = document.createElement('div'); editor.insertBefore(run, node); }
-            run.append(node);
-            run = null;
-        } else {
-            if (!run) { run = document.createElement('div'); editor.insertBefore(run, node); }
-            run.append(node);
-        }
-    }
-    if (!editor.firstChild) editor.innerHTML = '<div><br></div>';
-    return [...editor.querySelectorAll(paragraphSelector)].filter(node => !node.querySelector(paragraphSelector));
+function rememberCaret(editor) {
+    const selection = getSelection();
+    if (!editor?.isConnected || !selection?.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return false;
+    const state = editorStates.get(editor);
+    if (state) state.range = range.cloneRange();
+    return true;
 }
 
-function closeParagraphDialog() {
-    if (!paragraphDialog) return;
-    paragraphDialog.remove();
-    paragraphDialog = null;
+function restoreCaret(editor, collapse = false) {
+    const state = editorStates.get(editor);
+    if (!state || !editor.isConnected) return false;
+    editor.focus({preventScroll:true});
+    let range = state.range;
+    if (!range || !editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
+        range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+    } else range = range.cloneRange();
+    if (collapse) range.collapse(false);
+    const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    state.range = range.cloneRange();
+    return true;
 }
 
-function paragraphSummary(block, index) {
-    const text = (block.textContent || '').trim();
-    const photos = block.querySelectorAll('img').length;
-    return `${index + 1}. ${text || (photos ? '写真' : '空の段落')}${photos && text ? ' 📷' : ''}`;
+function preserveLegacySize(editor, note) {
+    if (!note.uniformFont) return;
+    const size = note.fontSize === 'large' ? '21px' : '16px';
+    // Replace the former blanket CSS override with equivalent existing HTML styling.
+    // No text or photo node is removed, and new native typing spans can override it.
+    const wrapper = document.createElement('div'); wrapper.style.fontSize = size;
+    while (editor.firstChild) wrapper.append(editor.firstChild);
+    wrapper.querySelectorAll('*').forEach(el => { if (el.tagName !== 'IMG') el.style.fontSize = size; });
+    editor.append(wrapper); editor.classList.remove('uniform-font'); note.uniformFont = false;
 }
 
-function openParagraphDialog(editor, note, mode) {
-    if (!editor?.isConnected || !data.notes.some(n => n.id === note.id)) return;
-    closeParagraphDialog();
-    const blocks = paragraphBlocks(editor);
-    const dialog = document.createElement('dialog');
-    dialog.className = 'paragraph-dialog';
-    dialog.setAttribute('aria-label', mode === 'photo' ? '写真を入れる場所' : '段落ごとの文字サイズ');
-    const header = document.createElement('div');
-    header.className = 'paragraph-dialog-header';
-    const heading = document.createElement('h2');
-    heading.textContent = mode === 'photo' ? '写真を入れる場所' : '段落ごとの文字サイズ';
-    const close = document.createElement('button');
-    close.textContent = '完了';
-    close.onclick = closeParagraphDialog;
-    header.append(heading, close);
-    dialog.append(header);
-    const hint = document.createElement('p');
-    hint.textContent = mode === 'photo'
-        ? '入れたい場所の「＋」を押して写真を選びます。'
-        : '変えたい段落の「標準」か「大」を押してください。ほかの段落は変わりません。';
-    dialog.append(hint);
-    const addPosition = (reference, after) => {
-        const button = document.createElement('button');
-        button.className = 'photo-position';
-        button.textContent = after ? '＋ この段落のあとに写真を入れる' : '＋ ノートの先頭に写真を入れる';
-        button.onclick = () => {
-            const range = document.createRange();
-            if (after) range.setStartAfter(reference);
-            else range.setStart(editor, 0);
-            range.collapse(true);
-            closeParagraphDialog();
-            insertPhoto(editor, note, range);
-        };
-        dialog.append(button);
-    };
-    if (mode === 'photo') addPosition(null, false);
-    blocks.forEach((block, index) => {
-        const row = document.createElement('section');
-        row.className = 'paragraph-choice';
-        const preview = document.createElement('div');
-        preview.className = 'paragraph-preview';
-        preview.textContent = paragraphSummary(block, index);
-        row.append(preview);
-        // Show actual thumbnails to distinguish positions around existing photos.
-        block.querySelectorAll('img').forEach(img => {
-            const thumbnail = document.createElement('img');
-            thumbnail.src = img.src;
-            thumbnail.alt = 'この段落の写真';
-            row.append(thumbnail);
-        });
-        if (mode === 'size') {
-            const controls = document.createElement('div');
-            controls.className = 'paragraph-size-controls';
-            const buttons = [];
-            const refresh = () => buttons.forEach(({button, size}) => {
-                button.setAttribute('aria-pressed', String(getComputedStyle(block).fontSize === `${size}px`));
-            });
-            for (const [label, size] of [['標準',16],['大',21]]) {
-                const button = document.createElement('button');
-                button.textContent = label;
-                button.setAttribute('aria-label', `${index + 1}番目の段落を${label}にする`);
-                buttons.push({button, size});
-                button.onclick = async () => {
-                    // If a user previously used the whole-note override, retain that
-                    // appearance on other paragraphs when converting to local sizes.
-                    if (note.uniformFont) {
-                        const oldSize = getNoteFontSize(note) === 'large' ? 21 : 16;
-                        blocks.forEach(p => setParagraphSize(p, oldSize));
-                        note.uniformFont = false;
-                        editor.classList.remove('uniform-font');
-                    }
-                    setParagraphSize(block, size);
-                    note.content = serializeEditor(editor);
-                    refresh();
-                    await saveNote(note);
-                };
-                controls.append(button);
-            }
-            row.append(controls);
-            refresh();
-        }
-        dialog.append(row);
-        if (mode === 'photo') addPosition(block, true);
-    });
-    dialog.addEventListener('cancel', e => {e.preventDefault(); closeParagraphDialog();});
-    document.body.append(dialog);
-    paragraphDialog = dialog;
-    dialog.showModal();
+function applyTypingSize(editor) {
+    const state = editorStates.get(editor), selection = getSelection();
+    if (!state || state.applying || composing || !selection?.rangeCount || !selection.isCollapsed ||
+        !editor.contains(selection.anchorNode) || document.activeElement !== editor) return;
+    // Native editing commands preserve the browser's IME and undo handling.
+    // They are always applied at a collapsed caret, never to existing selected text.
+    const commandSize = state.size === 'large' ? '5' : '3';
+    // Avoid nesting another font element for every keystroke.
+    if (String(document.queryCommandValue('fontSize')) === commandSize) { rememberCaret(editor); return; }
+    state.applying = true;
+    try {
+        document.execCommand('styleWithCSS', false, false);
+        document.execCommand('fontSize', false, state.size === 'large' ? '5' : '3');
+    } finally { state.applying = false; }
+    rememberCaret(editor);
 }
 
-function setParagraphSize(block, size) {
-    block.style.fontSize = `${size}px`;
-    // Clear only font-size overrides in this paragraph, preserving all other markup.
-    block.querySelectorAll('[style],font[size]').forEach(child => {
-        child.style.removeProperty('font-size');
-        if (child.nodeName === 'FONT') child.removeAttribute('size');
+function refreshSizeButtons(editor) {
+    const state = editorStates.get(editor); if (!state) return;
+    document.querySelectorAll('[data-input-size]').forEach(button => {
+        const localEditor = button.closest('.note-body')?.querySelector('.note-editor');
+        if (localEditor && localEditor !== editor) return;
+        button.textContent = state.size === 'large' ? '大' : '標準';
+        button.setAttribute('aria-label', 'これから入力する文字：' + button.textContent);
+        button.setAttribute('aria-pressed', String(state.size === 'large'));
     });
 }
 
-function attachParagraphTools(editor, note, tools) {
-    const size = document.createElement('button');
-    size.className = 'text-size-button';
-    size.textContent = '🔤 段落の文字サイズ';
-    size.onclick = () => openParagraphDialog(editor, note, 'size');
-    const photo = document.createElement('button');
-    photo.textContent = '📷 写真を追加';
-    photo.onclick = () => openParagraphDialog(editor, note, 'photo');
-    tools.append(size, photo);
+function changeTypingSize(editor, note) {
+    if (!editor || composing) return;
+    rememberCaret(editor);
+    if (!restoreCaret(editor, true)) return;
+    const state = editorStates.get(editor);
+    state.size = state.size === 'large' ? 'normal' : 'large';
+    note.inputFontSize = state.size;
+    applyTypingSize(editor); refreshSizeButtons(editor);
+    note.content = serializeEditor(editor); saveNote(note);
 }
 
+function insertSymbol(editor, note, symbol) {
+    if (!editor || composing) return;
+    rememberCaret(editor);
+    if (!restoreCaret(editor, true)) return;
+    applyTypingSize(editor);
+    document.execCommand('insertText', false, symbol);
+    rememberCaret(editor);
+    note.content = serializeEditor(editor); saveNote(note);
+}
+
+function toolbarButton(label, action) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+    button.addEventListener('pointerdown', e => { e.preventDefault(); rememberCaret(activeEditor); });
+    button.addEventListener('mousedown', e => e.preventDefault());
+    button.onclick = action;
+    return button;
+}
+
+function fillToolbar(bar, editor = null, note = null) {
+    const target = () => [editor || activeEditor, note || activeEditorNote];
+    const size = toolbarButton('標準', () => changeTypingSize(...target())); size.dataset.inputSize = '';
+    bar.append(size);
+    for (const symbol of ['・','○','：']) bar.append(toolbarButton(symbol, () => insertSymbol(...target(), symbol)));
+    const photo = toolbarButton('📷', () => {
+        const [ed,n] = target();
+        if (!ed || composing) return;
+        rememberCaret(ed); restoreCaret(ed, true);
+        insertPhoto(ed,n,editorStates.get(ed).range.cloneRange());
+    });
+    photo.setAttribute('aria-label','カーソル位置に写真を追加'); bar.append(photo);
+    bar.setAttribute('role','toolbar'); bar.setAttribute('aria-label','本文の編集');
+}
+
+function updateEditingBar() {
+    const bar = document.getElementById('mobilePhotoBar');
+    const editing = activeEditor?.isConnected && (document.activeElement === activeEditor || photoPickerOpen);
+    bar.classList.toggle('visible', !!editing);
+    const viewport = window.visualViewport;
+    const bottom = viewport ? Math.max(0, innerHeight - viewport.height - viewport.offsetTop) : 0;
+    bar.style.bottom = `${bottom}px`;
+    bar.classList.toggle('keyboard-visible', bottom > 80);
+    document.documentElement.style.setProperty('--editing-inset', editing ? `${bottom + 64}px` : '0px');
+}
+
+function setupEditor(editor, note, tools) {
+    preserveLegacySize(editor, note);
+    editorStates.set(editor, {range:null, size:note.inputFontSize === 'large' ? 'large' : 'normal'});
+    fillToolbar(tools, editor, note);
+    refreshSizeButtons(editor);
+    editor.setAttribute('aria-label', note.title + 'の本文');
+    editor.addEventListener('focus', () => {
+        activeEditor = editor; activeEditorNote = note;
+        rememberCaret(editor); refreshSizeButtons(editor); updateEditingBar();
+    });
+    editor.addEventListener('pointerup', () => { rememberCaret(editor); applyTypingSize(editor); });
+    editor.addEventListener('keydown', event => {
+        if (!event.ctrlKey && !event.metaKey && event.key.length === 1) applyTypingSize(editor);
+    });
+    editor.addEventListener('beforeinput', event => {
+        if (!event.isComposing && !composing && event.inputType === 'insertText') applyTypingSize(editor);
+    });
+    editor.addEventListener('compositionstart', () => { applyTypingSize(editor); composing = true; });
+    editor.addEventListener('compositionend', () => { composing = false; rememberCaret(editor); });
+    editor.addEventListener('input', event => {
+        rememberCaret(editor);
+        if (!event.isComposing && !composing && ['insertParagraph','insertLineBreak'].includes(event.inputType)) applyTypingSize(editor);
+        note.content = serializeEditor(editor); saveNote(note);
+    });
+    editor.addEventListener('blur', () => { rememberCaret(editor); composing = false; updateEditingBar(); });
+}
+
+document.addEventListener('selectionchange', () => { if (activeEditor) rememberCaret(activeEditor); });
+fillToolbar(document.getElementById('mobilePhotoBar'));
+window.visualViewport?.addEventListener('resize', updateEditingBar);
+window.visualViewport?.addEventListener('scroll', updateEditingBar);
+window.addEventListener('resize', updateEditingBar);
+
+let headerScrollY = window.scrollY;
+function updateHeaderOnScroll() {
+    const y = Math.max(0, scrollY), delta = y - headerScrollY;
+    if (Math.abs(delta) < 8) return;
+    headerScrollY = y;
+    if (dragActive || photoPickerOpen || document.activeElement?.closest('header')) return;
+    // Never change document geometry while the keyboard is moving the viewport.
+    if (document.activeElement?.matches('.note-editor')) return;
+    document.querySelector('header').classList.toggle('header-hidden', y > 70 && delta > 0);
+}
+window.addEventListener('scroll', updateHeaderOnScroll, {passive:true});
+
+async function toggleNoteInline(note, item) {
+    const y = item.getBoundingClientRect().top;
+    note.open = !note.open;
+    await saveNote(note);
+    if (!item.isConnected) return;
+    const replacement = await createNoteElement(note);
+    if (!item.isConnected) return;
+    item.replaceWith(replacement);
+    window.scrollBy(0, replacement.getBoundingClientRect().top - y);
+    renderHeaderControls(); updateEditingBar();
+}
 
 async function init() {
 
