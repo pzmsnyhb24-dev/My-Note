@@ -1,0 +1,5158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<meta
+    name="apple-mobile-web-app-capable"
+    content="yes"
+>
+
+<meta
+    name="apple-mobile-web-app-status-bar-style"
+    content="default"
+>
+
+<meta
+    name="apple-mobile-web-app-title"
+    content="My Note"
+>
+<link
+    rel="manifest"
+    href="manifest.json"
+>
+
+<title>My Note</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Helvetica Neue",
+        Arial,
+        sans-serif;
+    background: #f5f5f7;
+    color: #222;
+}
+
+header {
+    background: white;
+    padding: 18px 20px;
+    border-bottom: 1px solid #ddd;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header-title {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.search-box {
+    margin-top: 12px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    font-size: 16px;
+    outline: none;
+}
+
+.search-box input:focus {
+    border-color: #888;
+}
+
+.container {
+    max-width: 900px;
+    margin: auto;
+    padding: 18px;
+}
+
+.breadcrumb {
+    margin-bottom: 15px;
+    color: #666;
+    font-size: 14px;
+}
+
+.breadcrumb span {
+    cursor: pointer;
+}
+
+.breadcrumb span:hover {
+    text-decoration: underline;
+}
+
+.empty {
+    color: #888;
+    text-align: center;
+    padding: 50px 10px;
+}
+
+.item {
+    background: white;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+.item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 13px 14px;
+}
+
+.item-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.folder-name,
+.note-title {
+    font-size: 17px;
+    word-break: break-word;
+}
+
+.folder-name,
+.note-title {
+    cursor: pointer;
+}
+
+.drag-handle {
+    cursor: grab;
+    color: #999;
+    font-size: 21px;
+    padding: 3px 6px;
+    user-select: none;
+    touch-action: none;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 3px;
+}
+
+.action-buttons button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 15px;
+    padding: 6px;
+}
+
+.action-buttons button:hover {
+    background: #eee;
+    border-radius: 6px;
+}
+
+.note-body {
+    border-top: 1px solid #eee;
+    padding: 14px;
+    background: #fafafa;
+}
+
+.note-editor {
+    min-height: 120px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    outline: none;
+    line-height: 1.7;
+    overflow-wrap: break-word;
+}
+
+.note-editor:focus {
+    border-color: #999;
+}
+
+/* =========================================================
+   文字サイズ
+========================================================= */
+
+.note-editor.font-large {
+    font-size: 21px;
+}
+
+.note-editor font[size="5"] {
+    font-size: 21px;
+}
+
+.note-editor font[size="3"] {
+    font-size: 16px;
+}
+
+.text-size-button.active {
+    font-weight: bold;
+    background: #dcdcdc;
+}
+
+/* 検索ハイライト */
+.search-highlight {
+    background: #fff176;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+/* 写真長押しメニュー */
+.photo-delete-menu {
+    position: fixed;
+    z-index: 1000;
+    display: none;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.2);
+    padding: 6px;
+}
+
+.photo-delete-menu button {
+    border: none;
+    background: transparent;
+    padding: 10px 14px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.photo-delete-menu button:hover {
+    background: #eee;
+    border-radius: 7px;
+}
+
+/* キーボード付近の写真ボタン */
+.mobile-photo-bar {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .mobile-photo-bar {
+        display: block;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+        background: rgba(250,250,250,0.96);
+        border-top: 1px solid #ddd;
+        transform: translateY(100%);
+        transition: transform 0.15s ease;
+    }
+
+    .mobile-photo-bar.visible {
+        transform: translateY(0);
+    }
+
+    .mobile-photo-bar button {
+        border: none;
+        background: #eee;
+        border-radius: 8px;
+        padding: 9px 13px;
+        font-size: 15px;
+    }
+}
+
+/* すべて開く・閉じる */
+.collapse-all-button {
+    float: right;
+    border: none;
+    background: #eee;
+    border-radius: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+
+.note-editor img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 10px 0;
+    border-radius: 8px;
+}
+
+.note-tools {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.note-tools button,
+.bottom-buttons button {
+    border: none;
+    background: #eee;
+    padding: 9px 13px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.note-tools button:hover,
+.bottom-buttons button:hover {
+    background: #ddd;
+}
+
+.bottom-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.bottom-buttons button {
+    font-size: 15px;
+}
+
+.search-results {
+    margin-top: 15px;
+}
+
+.search-result {
+    background: white;
+    padding: 14px;
+    margin-bottom: 8px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.search-result:hover {
+    background: #f0f0f0;
+}
+
+.search-result-folder {
+    font-size: 13px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.drag-over {
+    outline: 2px dashed #888;
+    background: #f1f1f1;
+}
+
+.dragging {
+    opacity: 0.45;
+}
+
+.storage-info {
+    margin-top: 15px;
+    font-size: 12px;
+    color: #999;
+    text-align: center;
+}
+
+@media (max-width: 600px) {
+
+    .container {
+        padding: 12px;
+    }
+
+    header {
+        padding: 15px;
+    }
+
+    .header-title {
+        font-size: 21px;
+    }
+
+    .item-row {
+        padding: 12px 10px;
+    }
+
+    .folder-name,
+    .note-title {
+        font-size: 16px;
+    }
+
+    .drag-handle {
+        font-size: 20px;
+        padding: 5px;
+    }
+
+    .action-buttons button {
+        padding: 5px;
+    }
+
+}
+
+/* スマホのドラッグ並び替え */
+.touch-dragging {
+    position: relative;
+    z-index: 100;
+    opacity: 0.75;
+    transform: scale(1.02);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.18);
+}
+
+.touch-placeholder {
+    height: 55px;
+    margin-bottom: 10px;
+    border: 2px dashed #aaa;
+    border-radius: 12px;
+    background: #eee;
+}
+
+.drag-handle {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+
+    <div class="header-title">
+        📚 My Note
+    </div>
+
+    <div class="search-box">
+
+        <div style="display:flex; gap:6px;">
+            <input
+                id="searchInput"
+                type="search"
+                placeholder="🔍 ノートを検索..."
+                style="flex:1;"
+            >
+            <button
+                id="clearSearchButton"
+                type="button"
+                style="display:none; border:none; background:#eee; border-radius:8px; padding:0 12px;"
+            >✕</button>
+        </div>
+
+    </div>
+
+    <div
+        id="headerControls"
+        style="margin-top:8px; overflow:hidden;"
+    ></div>
+
+</header>
+
+
+<div class="container">
+
+    <div id="breadcrumb" class="breadcrumb"></div>
+
+    <div id="content"></div>
+
+    <div
+        id="bottomButtons"
+        class="bottom-buttons"
+    ></div>
+
+    <div
+        id="storageInfo"
+        class="storage-info"
+    ></div>
+
+</div>
+
+<div id="mobilePhotoBar" class="mobile-photo-bar">
+    <button id="mobilePhotoButton">📷 写真を追加</button>
+</div>
+
+<div id="photoDeleteMenu" class="photo-delete-menu">
+    <button id="deleteSelectedPhotoButton">🗑️ 写真を削除</button>
+</div>
+
+
+<script>
+
+/* =========================================================
+   IndexedDB
+========================================================= */
+
+const DB_NAME = "MyNoteDB";
+const DB_VERSION = 2;
+
+const FOLDERS_STORE = "folders";
+const NOTES_STORE = "notes";
+const PHOTOS_STORE = "photos";
+const TRASH_STORE = "trash";
+
+let db = null;
+
+
+/* =========================================================
+   IndexedDBを開く
+========================================================= */
+
+function openDatabase() {
+
+    return new Promise((resolve, reject) => {
+
+        const request =
+            indexedDB.open(
+                DB_NAME,
+                DB_VERSION
+            );
+
+
+        request.onupgradeneeded = event => {
+
+            const database =
+                event.target.result;
+
+
+            if (
+                !database.objectStoreNames.contains(
+                    FOLDERS_STORE
+                )
+            ) {
+
+                database.createObjectStore(
+                    FOLDERS_STORE,
+                    {
+                        keyPath: "id"
+                    }
+                );
+            }
+
+
+            if (
+                !database.objectStoreNames.contains(
+                    NOTES_STORE
+                )
+            ) {
+
+                database.createObjectStore(
+                    NOTES_STORE,
+                    {
+                        keyPath: "id"
+                    }
+                );
+            }
+
+
+            if (
+                !database.objectStoreNames.contains(
+                    PHOTOS_STORE
+                )
+            ) {
+
+                database.createObjectStore(
+                    PHOTOS_STORE,
+                    {
+                        keyPath: "id"
+                    }
+                );
+            }
+
+            if (
+                !database.objectStoreNames.contains(
+                    TRASH_STORE
+                )
+            ) {
+
+                database.createObjectStore(
+                    TRASH_STORE,
+                    {
+                        keyPath: "id"
+                    }
+                );
+            }
+
+        };
+
+
+        request.onsuccess = () => {
+
+            db = request.result;
+
+            resolve(db);
+        };
+
+
+        request.onerror = () => {
+
+            reject(
+                request.error
+            );
+        };
+
+    });
+}
+
+
+/* =========================================================
+   全データ取得
+========================================================= */
+
+function getAll(storeName) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction =
+            db.transaction(
+                storeName,
+                "readonly"
+            );
+
+        const store =
+            transaction.objectStore(
+                storeName
+            );
+
+        const request =
+            store.getAll();
+
+
+        request.onsuccess = () => {
+
+            resolve(
+                request.result
+            );
+        };
+
+
+        request.onerror = () => {
+
+            reject(
+                request.error
+            );
+        };
+
+    });
+}
+
+
+/* =========================================================
+   データ保存
+========================================================= */
+
+function putData(
+    storeName,
+    value
+) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction =
+            db.transaction(
+                storeName,
+                "readwrite"
+            );
+
+        const store =
+            transaction.objectStore(
+                storeName
+            );
+
+        const request =
+            store.put(value);
+
+
+        request.onsuccess = () => {
+
+            resolve();
+        };
+
+
+        request.onerror = () => {
+
+            reject(
+                request.error
+            );
+        };
+
+    });
+}
+
+
+/* =========================================================
+   データ削除
+========================================================= */
+
+function deleteData(
+    storeName,
+    id
+) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction =
+            db.transaction(
+                storeName,
+                "readwrite"
+            );
+
+        const store =
+            transaction.objectStore(
+                storeName
+            );
+
+        const request =
+            store.delete(id);
+
+
+        request.onsuccess = () => {
+
+            resolve();
+        };
+
+
+        request.onerror = () => {
+
+            reject(
+                request.error
+            );
+        };
+
+    });
+}
+
+
+/* =========================================================
+   複数データ保存
+========================================================= */
+
+function putMany(
+    storeName,
+    values
+) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction =
+            db.transaction(
+                storeName,
+                "readwrite"
+            );
+
+        const store =
+            transaction.objectStore(
+                storeName
+            );
+
+
+        values.forEach(value => {
+
+            store.put(value);
+
+        });
+
+
+        transaction.oncomplete = () => {
+
+            resolve();
+        };
+
+
+        transaction.onerror = () => {
+
+            reject(
+                transaction.error
+            );
+        };
+
+    });
+}
+
+
+/* =========================================================
+   複数データ削除
+========================================================= */
+
+function deleteMany(
+    storeName,
+    ids
+) {
+
+    return new Promise((resolve, reject) => {
+
+        if (ids.length === 0) {
+
+            resolve();
+
+            return;
+        }
+
+
+        const transaction =
+            db.transaction(
+                storeName,
+                "readwrite"
+            );
+
+        const store =
+            transaction.objectStore(
+                storeName
+            );
+
+
+        ids.forEach(id => {
+
+            store.delete(id);
+
+        });
+
+
+        transaction.oncomplete = () => {
+
+            resolve();
+        };
+
+
+        transaction.onerror = () => {
+
+            reject(
+                transaction.error
+            );
+        };
+
+    });
+}
+
+
+/* =========================================================
+   現在のデータ
+========================================================= */
+
+let data = {
+
+    folders: [],
+
+    notes: []
+
+};
+
+
+let currentFolderId = null;
+
+let draggedItem = null;
+
+let objectUrls = [];
+
+/* =========================================================
+   追加UIの状態
+========================================================= */
+
+let activeEditor = null;
+let activeEditorNote = null;
+let selectedPhoto = null;
+let selectedPhotoNote = null;
+let selectedPhotoEditor = null;
+let photoLongPressTimer = null;
+let currentSearchKeyword = "";
+
+/* =========================================================
+   ノートの文字サイズ設定
+========================================================= */
+
+function getNoteFontSize(note) {
+    return note.fontSize === "large" ? "large" : "normal";
+}
+
+function setNoteFontSize(note, size) {
+    note.fontSize = size === "large" ? "large" : "normal";
+}
+
+function updateInputSizeButton(button, note) {
+    if (!button) return;
+
+    const large = getNoteFontSize(note) === "large";
+
+    button.textContent = large
+        ? "🔤 入力：大"
+        : "🔤 入力：標準";
+
+    button.classList.toggle("active", large);
+}
+
+/* 選択範囲の文字サイズ変更 */
+function applySelectionFontSize(editor, size) {
+    if (!editor) return;
+
+    editor.focus();
+
+    const selection = window.getSelection();
+
+    if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        !editor.contains(selection.anchorNode) ||
+        !editor.contains(selection.focusNode) ||
+        selection.isCollapsed
+    ) {
+        return;
+    }
+
+    const range = selection.getRangeAt(0);
+
+    if (size === "large") {
+        document.execCommand("fontSize", false, "5");
+    } else {
+        document.execCommand("fontSize", false, "3");
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+/* =========================================================
+   写真の長押し削除
+========================================================= */
+
+function setupPhotoLongPress(img, note, editor) {
+    let timer = null;
+
+    const start = event => {
+        if (event.pointerType === "mouse") return;
+
+        clearTimeout(timer);
+
+        timer = setTimeout(() => {
+            selectedPhoto = img;
+            selectedPhotoNote = note;
+            selectedPhotoEditor = editor;
+
+            const menu = document.getElementById("photoDeleteMenu");
+            const rect = img.getBoundingClientRect();
+
+            menu.style.left =
+                Math.max(8, Math.min(
+                    window.innerWidth - 180,
+                    rect.left
+                )) + "px";
+
+            menu.style.top =
+                Math.max(8, rect.bottom - 45) + "px";
+
+            menu.style.display = "block";
+        }, 550);
+    };
+
+    const cancel = () => {
+        clearTimeout(timer);
+    };
+
+    img.addEventListener("pointerdown", start);
+    img.addEventListener("pointerup", cancel);
+    img.addEventListener("pointercancel", cancel);
+    img.addEventListener("pointermove", cancel);
+
+    img.addEventListener("contextmenu", event => {
+        event.preventDefault();
+    });
+}
+
+async function deleteSelectedPhoto() {
+    if (
+        !selectedPhoto ||
+        !selectedPhotoNote ||
+        !selectedPhotoEditor
+    ) {
+        return;
+    }
+
+    const photoId =
+        selectedPhoto.dataset.photoId;
+
+    if (!photoId) return;
+
+    const ok = confirm("この写真を削除しますか？");
+
+    if (!ok) return;
+
+    selectedPhoto.remove();
+
+    selectedPhotoNote.content =
+        selectedPhotoEditor.innerHTML;
+
+    await deleteData(
+        PHOTOS_STORE,
+        photoId
+    );
+
+    await saveNote(
+        selectedPhotoNote
+    );
+
+    closePhotoDeleteMenu();
+}
+
+function closePhotoDeleteMenu() {
+    const menu =
+        document.getElementById(
+            "photoDeleteMenu"
+        );
+
+    menu.style.display = "none";
+
+    selectedPhoto = null;
+    selectedPhotoNote = null;
+    selectedPhotoEditor = null;
+}
+
+/* =========================================================
+   検索ハイライト解除
+========================================================= */
+
+function clearSearchHighlight() {
+    document
+        .querySelectorAll(".search-highlight")
+        .forEach(mark => {
+            const parent = mark.parentNode;
+
+            while (mark.firstChild) {
+                parent.insertBefore(
+                    mark.firstChild,
+                    mark
+                );
+            }
+
+            parent.removeChild(mark);
+        });
+}
+
+/* 検索文字を本文にハイライト */
+function highlightKeyword(editor, keyword) {
+    if (!editor || !keyword) return;
+
+    const walker =
+        document.createTreeWalker(
+            editor,
+            NodeFilter.SHOW_TEXT
+        );
+
+    const textNodes = [];
+    let node;
+
+    while (
+        (node = walker.nextNode())
+    ) {
+        if (
+            node.parentElement &&
+            node.parentElement.closest(
+                ".search-highlight"
+            )
+        ) {
+            continue;
+        }
+
+        if (
+            node.nodeValue
+                .toLowerCase()
+                .includes(keyword.toLowerCase())
+        ) {
+            textNodes.push(node);
+        }
+    }
+
+    const lowerKeyword =
+        keyword.toLowerCase();
+
+    textNodes.forEach(textNode => {
+        let current = textNode;
+
+        while (current) {
+            const value = current.nodeValue || "";
+            const lower = value.toLowerCase();
+            const index = lower.indexOf(
+                lowerKeyword
+            );
+
+            if (index === -1) break;
+
+            const range =
+                document.createRange();
+
+            range.setStart(
+                current,
+                index
+            );
+
+            range.setEnd(
+                current,
+                index + keyword.length
+            );
+
+            const mark =
+                document.createElement(
+                    "span"
+                );
+
+            mark.className =
+                "search-highlight";
+
+            range.surroundContents(mark);
+
+            current =
+                mark.nextSibling;
+        }
+    });
+}
+
+/* 検索結果からノートを開いて該当箇所へ移動 */
+async function openSearchResult(note, keyword) {
+    currentFolderId =
+        note.folderId || null;
+
+    note.open = true;
+
+    const input =
+        document.getElementById(
+            "searchInput"
+        );
+
+    input.value = "";
+
+    currentSearchKeyword = "";
+
+    await saveNote(note);
+    await render();
+
+    requestAnimationFrame(() => {
+        const item =
+            Array.from(
+                document.querySelectorAll(
+                    "[data-note-id]"
+                )
+            ).find(
+                element =>
+                    element.dataset.noteId ===
+                    note.id
+            );
+
+        if (!item) return;
+
+        const editor =
+            item.querySelector(
+                ".note-editor"
+            );
+
+        if (!editor) return;
+
+        highlightKeyword(
+            editor,
+            keyword
+        );
+
+        const target =
+            editor.querySelector(
+                ".search-highlight"
+            );
+
+        if (target) {
+            target.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+        }
+
+        const clearButton =
+            document.getElementById(
+                "clearSearchButton"
+            );
+
+        if (clearButton) {
+            clearButton.style.display =
+                "inline-block";
+        }
+    });
+}
+
+/* =========================================================
+   すべて開く・閉じる
+========================================================= */
+
+async function setAllNotesOpen(open) {
+    const notes =
+        data.notes.filter(
+            note =>
+                (note.folderId || null) ===
+                currentFolderId
+        );
+
+    if (notes.length === 0) return;
+
+    notes.forEach(note => {
+        note.open = open;
+    });
+
+    await putMany(
+        NOTES_STORE,
+        notes
+    );
+
+    render();
+}
+
+function renderHeaderControls() {
+    const area =
+        document.getElementById(
+            "headerControls"
+        );
+
+    if (!area) return;
+
+    area.innerHTML = "";
+
+    const notes =
+        data.notes.filter(
+            note =>
+                (note.folderId || null) ===
+                currentFolderId
+        );
+
+    if (notes.length === 0) return;
+
+    const allOpen =
+        notes.every(note => note.open);
+
+    const button =
+        document.createElement("button");
+
+    button.className =
+        "collapse-all-button";
+
+    button.textContent =
+        allOpen
+            ? "すべて閉じる"
+            : "すべて開く";
+
+    button.onclick = () => {
+        setAllNotesOpen(!allOpen);
+    };
+
+    area.appendChild(button);
+}
+
+
+/* =========================================================
+   ID
+========================================================= */
+
+function createId() {
+
+    return (
+        Date.now().toString(36) +
+        Math.random()
+            .toString(36)
+            .substring(2)
+    );
+
+}
+
+
+/* =========================================================
+   データ読み込み
+========================================================= */
+
+async function loadData() {
+
+    data.folders =
+        await getAll(
+            FOLDERS_STORE
+        );
+
+
+    data.notes =
+        await getAll(
+            NOTES_STORE
+        );
+
+
+    data.notes.forEach(note => {
+        if (
+            note.fontSize !== "large" &&
+            note.fontSize !== "normal"
+        ) {
+            note.fontSize = "normal";
+        }
+    });
+
+    normalizeOrder();
+
+}
+
+
+/* =========================================================
+   並び順整理
+========================================================= */
+
+function normalizeOrder() {
+
+    const parentGroups = {};
+
+
+    data.folders.forEach(folder => {
+
+        const parent =
+            folder.parentId || null;
+
+
+        if (!parentGroups[parent]) {
+
+            parentGroups[parent] = [];
+
+        }
+
+
+        parentGroups[parent].push(
+            folder
+        );
+
+    });
+
+
+    Object.values(parentGroups)
+        .forEach(list => {
+
+            list.sort(
+                (a, b) =>
+                    (a.order ?? 0) -
+                    (b.order ?? 0)
+            );
+
+
+            list.forEach(
+                (folder, index) => {
+
+                    folder.order =
+                        index;
+
+                }
+            );
+
+        });
+
+
+    const noteGroups = {};
+
+
+    data.notes.forEach(note => {
+
+        const folder =
+            note.folderId || null;
+
+
+        if (!noteGroups[folder]) {
+
+            noteGroups[folder] = [];
+
+        }
+
+
+        noteGroups[folder].push(
+            note
+        );
+
+    });
+
+
+    Object.values(noteGroups)
+        .forEach(list => {
+
+            list.sort(
+                (a, b) =>
+                    (a.order ?? 0) -
+                    (b.order ?? 0)
+            );
+
+
+            list.forEach(
+                (note, index) => {
+
+                    note.order =
+                        index;
+
+                }
+            );
+
+        });
+
+}
+
+
+/* =========================================================
+   フォルダ取得
+========================================================= */
+
+function getCurrentFolder() {
+
+    return data.folders.find(
+        folder =>
+            folder.id ===
+            currentFolderId
+    );
+
+}
+
+
+/* =========================================================
+   フォルダパス
+========================================================= */
+
+function getFolderPath(folderId) {
+
+    const path = [];
+
+
+    let current =
+        data.folders.find(
+            folder =>
+                folder.id ===
+                folderId
+        );
+
+
+    while (current) {
+
+        path.unshift(current);
+
+
+        current =
+            data.folders.find(
+                folder =>
+                    folder.id ===
+                    current.parentId
+            );
+
+    }
+
+
+    return path;
+
+}
+
+
+/* =========================================================
+   フォルダソート
+========================================================= */
+
+function sortFolders(folders) {
+
+    return folders.sort(
+        (a, b) =>
+            (a.order ?? 0) -
+            (b.order ?? 0)
+    );
+
+}
+
+
+/* =========================================================
+   ノートソート
+========================================================= */
+
+function sortNotes(notes) {
+
+    return notes.sort(
+        (a, b) =>
+            (a.order ?? 0) -
+            (b.order ?? 0)
+    );
+
+}
+
+
+/* =========================================================
+   画面描画
+========================================================= */
+
+async function render() {
+
+    revokeObjectUrls();
+
+    renderBreadcrumb();
+
+    renderHeaderControls();
+
+    await renderContent();
+
+    renderBottomButtons();
+
+}
+
+
+/* =========================================================
+   パンくず
+========================================================= */
+
+function renderBreadcrumb() {
+
+    const breadcrumb =
+        document.getElementById(
+            "breadcrumb"
+        );
+
+
+    breadcrumb.innerHTML = "";
+
+
+    const home =
+        document.createElement(
+            "span"
+        );
+
+
+    home.textContent =
+        "← ホーム";
+
+
+    home.onclick = () => {
+
+        currentFolderId =
+            null;
+
+        render();
+
+    };
+
+
+    breadcrumb.appendChild(home);
+
+
+    if (!currentFolderId) {
+
+        return;
+
+    }
+
+
+    const path =
+        getFolderPath(
+            currentFolderId
+        );
+
+
+    path.forEach(folder => {
+
+        breadcrumb.appendChild(
+            document.createTextNode(
+                "  /  "
+            )
+        );
+
+
+        const span =
+            document.createElement(
+                "span"
+            );
+
+
+        span.textContent =
+            folder.name;
+
+
+        span.onclick = () => {
+
+            currentFolderId =
+                folder.id;
+
+            render();
+
+        };
+
+
+        breadcrumb.appendChild(span);
+
+    });
+
+}
+
+
+/* =========================================================
+   コンテンツ
+========================================================= */
+
+async function renderContent() {
+
+    const content =
+        document.getElementById(
+            "content"
+        );
+
+
+    content.innerHTML = "";
+
+
+    const folders =
+        sortFolders(
+            data.folders.filter(
+                folder =>
+                    (folder.parentId || null) ===
+                    currentFolderId
+            )
+        );
+
+
+    const notes =
+        sortNotes(
+            data.notes.filter(
+                note =>
+                    (note.folderId || null) ===
+                    currentFolderId
+            )
+        );
+
+
+    if (
+        folders.length === 0 &&
+        notes.length === 0
+    ) {
+
+        const empty =
+            document.createElement(
+                "div"
+            );
+
+
+        empty.className =
+            "empty";
+
+
+        empty.textContent =
+            "ここにはまだ何もありません";
+
+
+        content.appendChild(empty);
+
+    }
+
+
+    for (
+        const folder of folders
+    ) {
+
+        content.appendChild(
+            createFolderElement(folder)
+        );
+
+    }
+
+
+    for (
+        const note of notes
+    ) {
+
+        const element =
+            await createNoteElement(
+                note
+            );
+
+
+        content.appendChild(
+            element
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   ドラッグ共通
+========================================================= */
+
+function setupDragEvents(
+    item,
+    type,
+    object
+) {
+
+    const handle =
+        item.querySelector(
+            ".drag-handle"
+        );
+
+
+    handle.draggable = true;
+
+
+    handle.addEventListener(
+        "dragstart",
+        event => {
+
+            draggedItem = {
+
+                type: type,
+
+                id: object.id
+
+            };
+
+
+            item.classList.add(
+                "dragging"
+            );
+
+
+            event.dataTransfer.effectAllowed =
+                "move";
+
+        }
+    );
+
+
+    handle.addEventListener(
+        "dragend",
+        () => {
+
+            draggedItem = null;
+
+            item.classList.remove(
+                "dragging"
+            );
+
+        }
+    );
+
+
+    item.addEventListener(
+        "dragover",
+        event => {
+
+            event.preventDefault();
+
+            item.classList.add(
+                "drag-over"
+            );
+
+        }
+    );
+
+
+    item.addEventListener(
+        "dragleave",
+        () => {
+
+            item.classList.remove(
+                "drag-over"
+            );
+
+        }
+    );
+
+
+    item.addEventListener(
+        "drop",
+        event => {
+
+            event.preventDefault();
+
+            item.classList.remove(
+                "drag-over"
+            );
+
+
+            if (!draggedItem) {
+
+                return;
+
+            }
+
+
+            if (
+                draggedItem.type ===
+                type &&
+                draggedItem.id !==
+                object.id
+            ) {
+
+                if (
+                    type ===
+                    "folder"
+                ) {
+
+                    moveFolderBefore(
+                        draggedItem.id,
+                        object.id
+                    );
+
+                } else {
+
+                    moveNoteBefore(
+                        draggedItem.id,
+                        object.id
+                    );
+
+                }
+
+            }
+
+        }
+    );
+
+}
+
+/* =========================================================
+   スマホ用長押しドラッグ
+========================================================= */
+
+function setupTouchDrag(
+    item,
+    type,
+    object
+) {
+
+    const handle =
+        item.querySelector(".drag-handle");
+
+    if (!handle) {
+        return;
+    }
+
+    let pressTimer = null;
+    let dragging = false;
+    let placeholder = null;
+    let startX = 0;
+    let startY = 0;
+
+    handle.addEventListener(
+        "pointerdown",
+        event => {
+
+            /*
+             * マウスの場合は通常のHTML5ドラッグを使う
+             */
+            if (event.pointerType === "mouse") {
+                return;
+            }
+
+            startX = event.clientX;
+            startY = event.clientY;
+
+            pressTimer = setTimeout(() => {
+
+                dragging = true;
+
+                event.preventDefault();
+
+                handle.setPointerCapture(
+                    event.pointerId
+                );
+
+                item.classList.add(
+                    "touch-dragging"
+                );
+
+                placeholder =
+                    document.createElement(
+                        "div"
+                    );
+
+                placeholder.className =
+                    "touch-placeholder";
+
+                item.parentNode.insertBefore(
+                    placeholder,
+                    item
+                );
+
+                /*
+                 * 元の場所を確保したまま
+                 * itemを少し浮かせる
+                 */
+                item.style.position =
+                    "fixed";
+
+                item.style.width =
+                    placeholder.offsetWidth + "px";
+
+                item.style.left =
+                    placeholder.getBoundingClientRect().left + "px";
+
+                item.style.top =
+                    placeholder.getBoundingClientRect().top + "px";
+
+                item.style.pointerEvents =
+                    "none";
+
+            }, 350);
+
+        }
+    );
+
+
+    handle.addEventListener(
+        "pointermove",
+        event => {
+
+            if (!dragging) {
+
+                /*
+                 * 長押し前に大きく動いたら
+                 * 通常のスクロールと判断
+                 */
+                const dx =
+                    Math.abs(
+                        event.clientX - startX
+                    );
+
+                const dy =
+                    Math.abs(
+                        event.clientY - startY
+                    );
+
+                if (
+                    dx > 10 ||
+                    dy > 10
+                ) {
+
+                    clearTimeout(
+                        pressTimer
+                    );
+
+                }
+
+                return;
+            }
+
+
+            event.preventDefault();
+
+            /* 画面端で自動スクロール */
+            const edge = 70;
+
+            if (event.clientY < edge) {
+                window.scrollBy(
+                    0,
+                    -12
+                );
+            } else if (
+                event.clientY >
+                window.innerHeight - edge
+            ) {
+                window.scrollBy(
+                    0,
+                    12
+                );
+            }
+
+
+            item.style.left =
+                (
+                    event.clientX -
+                    item.offsetWidth / 2
+                ) + "px";
+
+
+            item.style.top =
+                (
+                    event.clientY -
+                    25
+                ) + "px";
+
+
+            const elements =
+                Array.from(
+                    item.parentNode.children
+                ).filter(
+                    element =>
+                        element !== item &&
+                        element !== placeholder &&
+                        element.classList.contains(
+                            "item"
+                        )
+                );
+
+
+            let target = null;
+
+
+            for (
+                const element of elements
+            ) {
+
+                const rect =
+                    element.getBoundingClientRect();
+
+
+                if (
+                    event.clientY <
+                    rect.top +
+                    rect.height / 2
+                ) {
+
+                    target = element;
+
+                    break;
+                }
+
+            }
+
+
+            if (target) {
+
+                item.parentNode.insertBefore(
+                    placeholder,
+                    target
+                );
+
+            } else {
+
+                item.parentNode.appendChild(
+                    placeholder
+                );
+
+            }
+
+        }
+    );
+
+
+    handle.addEventListener(
+        "pointerup",
+        async event => {
+
+            clearTimeout(
+                pressTimer
+            );
+
+
+            if (!dragging) {
+                return;
+            }
+
+
+            dragging = false;
+
+
+            item.style.position =
+                "";
+
+            item.style.width =
+                "";
+
+            item.style.left =
+                "";
+
+            item.style.top =
+                "";
+
+            item.style.pointerEvents =
+                "";
+
+
+            item.classList.remove(
+                "touch-dragging"
+            );
+
+
+            /*
+             * placeholderの位置から
+             * 新しい順番を作る
+             */
+            const parent =
+                placeholder.parentNode;
+
+
+            const elements =
+                Array.from(
+                    parent.children
+                ).filter(
+                    element =>
+                        element.classList.contains(
+                            "item"
+                        )
+                );
+
+
+            let newIndex =
+                elements.indexOf(
+                    item
+                );
+
+
+            /*
+             * item自体はDOM上では元の位置なので、
+             * placeholder位置から計算する
+             */
+            const placeholderIndex =
+                Array.from(
+                    parent.children
+                ).indexOf(
+                    placeholder
+                );
+
+
+            newIndex =
+                placeholderIndex;
+
+
+            placeholder.replaceWith(
+                item
+            );
+
+
+            if (type === "folder") {
+
+                await reorderFoldersByIndex(
+                    object.id,
+                    newIndex
+                );
+
+            } else {
+
+                await reorderNotesByIndex(
+                    object.id,
+                    newIndex
+                );
+
+            }
+
+
+            render();
+
+        }
+    );
+
+
+    handle.addEventListener(
+        "pointercancel",
+        () => {
+
+            clearTimeout(
+                pressTimer
+            );
+
+            if (!dragging) {
+                return;
+            }
+
+
+            dragging = false;
+
+
+            item.style.position =
+                "";
+
+            item.style.width =
+                "";
+
+            item.style.left =
+                "";
+
+            item.style.top =
+                "";
+
+            item.style.pointerEvents =
+                "";
+
+
+            item.classList.remove(
+                "touch-dragging"
+            );
+
+
+            if (placeholder) {
+
+                placeholder.replaceWith(
+                    item
+                );
+
+            }
+
+        }
+    );
+
+    /* スマホ用長押しドラッグ */
+    setupTouchDrag(
+        item,
+        type,
+        object
+    );
+}
+
+
+/* =========================================================
+   フォルダを指定位置へ移動
+========================================================= */
+
+async function reorderFoldersByIndex(
+    folderId,
+    newIndex
+) {
+
+    const folder =
+        data.folders.find(
+            folder =>
+                folder.id === folderId
+        );
+
+
+    if (!folder) {
+        return;
+    }
+
+
+    const siblings =
+        sortFolders(
+            data.folders.filter(
+                other =>
+                    (other.parentId || null) ===
+                    (folder.parentId || null)
+            )
+        );
+
+
+    const oldIndex =
+        siblings.findIndex(
+            other =>
+                other.id === folderId
+        );
+
+
+    if (oldIndex === -1) {
+        return;
+    }
+
+
+    siblings.splice(
+        oldIndex,
+        1
+    );
+
+
+    if (newIndex > siblings.length) {
+        newIndex = siblings.length;
+    }
+
+
+    siblings.splice(
+        newIndex,
+        0,
+        folder
+    );
+
+
+    siblings.forEach(
+        (folder, index) => {
+
+            folder.order =
+                index;
+
+        }
+    );
+
+
+    await saveFolderOrders(
+        siblings
+    );
+
+}
+
+
+/* =========================================================
+   ノートを指定位置へ移動
+========================================================= */
+
+async function reorderNotesByIndex(
+    noteId,
+    newIndex
+) {
+
+    const note =
+        data.notes.find(
+            note =>
+                note.id === noteId
+        );
+
+
+    if (!note) {
+        return;
+    }
+
+
+    const siblings =
+        sortNotes(
+            data.notes.filter(
+                other =>
+                    (other.folderId || null) ===
+                    (note.folderId || null)
+            )
+        );
+
+
+    const oldIndex =
+        siblings.findIndex(
+            other =>
+                other.id === noteId
+        );
+
+
+    if (oldIndex === -1) {
+        return;
+    }
+
+
+    siblings.splice(
+        oldIndex,
+        1
+    );
+
+
+    if (newIndex > siblings.length) {
+        newIndex = siblings.length;
+    }
+
+
+    siblings.splice(
+        newIndex,
+        0,
+        note
+    );
+
+
+    siblings.forEach(
+        (note, index) => {
+
+            note.order =
+                index;
+
+        }
+    );
+
+
+    await saveNoteOrders(
+        siblings
+    );
+
+}
+
+
+/* =========================================================
+   フォルダ表示
+========================================================= */
+
+function createFolderElement(
+    folder
+) {
+
+    const item =
+        document.createElement(
+            "div"
+        );
+
+
+    item.className =
+        "item";
+
+    item.dataset.folderId =
+        folder.id;
+
+
+    const row =
+        document.createElement(
+            "div"
+        );
+
+
+    row.className =
+        "item-row";
+
+
+    const handle =
+        document.createElement(
+            "div"
+        );
+
+
+    handle.className =
+        "drag-handle";
+
+
+    handle.textContent =
+        "☷";
+
+
+    handle.title =
+        "ドラッグして並び替え";
+
+
+    const main =
+        document.createElement(
+            "div"
+        );
+
+
+    main.className =
+        "item-main";
+
+
+    const name =
+        document.createElement(
+            "div"
+        );
+
+
+    name.className =
+        "folder-name";
+
+
+    name.textContent =
+        "📁 " +
+        folder.name;
+
+
+    name.onclick = () => {
+
+        currentFolderId =
+            folder.id;
+
+        render();
+
+    };
+
+
+    main.appendChild(name);
+
+
+    const actions =
+        document.createElement(
+            "div"
+        );
+
+
+    actions.className =
+        "action-buttons";
+
+
+    const rename =
+        document.createElement(
+            "button"
+        );
+
+
+    rename.textContent =
+        "✏️";
+
+
+    rename.title =
+        "名前変更";
+
+
+    rename.onclick = () => {
+
+        renameFolder(folder);
+
+    };
+
+
+    const del =
+        document.createElement(
+            "button"
+        );
+
+
+    del.textContent =
+        "🗑️";
+
+
+    del.title =
+        "削除";
+
+
+    del.onclick = () => {
+
+        deleteFolder(folder);
+
+    };
+
+
+    actions.appendChild(
+        rename
+    );
+
+
+    actions.appendChild(
+        del
+    );
+
+
+    row.appendChild(
+        handle
+    );
+
+
+    row.appendChild(
+        main
+    );
+
+
+    row.appendChild(
+        actions
+    );
+
+
+    item.appendChild(
+        row
+    );
+
+
+    setupDragEvents(
+        item,
+        "folder",
+        folder
+    );
+
+
+    return item;
+
+}
+
+
+/* =========================================================
+   フォルダ追加
+========================================================= */
+
+async function addFolder() {
+
+    const name =
+        prompt(
+            "フォルダ名を入力してください"
+        );
+
+
+    if (!name) {
+
+        return;
+
+    }
+
+
+    const siblings =
+        data.folders.filter(
+            folder =>
+                (folder.parentId || null) ===
+                currentFolderId
+        );
+
+
+    const folder = {
+
+        id: createId(),
+
+        name: name,
+
+        parentId:
+            currentFolderId,
+
+        order:
+            siblings.length
+
+    };
+
+
+    await putData(
+        FOLDERS_STORE,
+        folder
+    );
+
+
+    data.folders.push(
+        folder
+    );
+
+
+    render();
+
+}
+
+
+/* =========================================================
+   フォルダ名前変更
+========================================================= */
+
+async function renameFolder(
+    folder
+) {
+
+    const name =
+        prompt(
+            "新しいフォルダ名",
+            folder.name
+        );
+
+
+    if (!name) {
+
+        return;
+
+    }
+
+
+    folder.name =
+        name;
+
+
+    await putData(
+        FOLDERS_STORE,
+        folder
+    );
+
+
+    render();
+
+}
+
+
+
+/* =========================================================
+   ゴミ箱
+========================================================= */
+
+async function moveToTrash(type, object, extra = {}) {
+    const clonedObject =
+        JSON.parse(
+            JSON.stringify(object)
+        );
+
+    const trashRecord = {
+        id: createId(),
+        originalId: object.id,
+        type,
+        object: clonedObject,
+        ...extra,
+        deletedAt: Date.now()
+    };
+
+    await putData(
+        TRASH_STORE,
+        trashRecord
+    );
+
+    return trashRecord;
+}
+
+async function restoreTrashItem(trashRecord) {
+    if (trashRecord.type === "note") {
+        await putData(
+            NOTES_STORE,
+            trashRecord.object
+        );
+
+        data.notes.push(
+            trashRecord.object
+        );
+
+        if (trashRecord.photos) {
+            for (const photo of trashRecord.photos) {
+                await putData(
+                    PHOTOS_STORE,
+                    photo
+                );
+            }
+        }
+    }
+
+    if (trashRecord.type === "folder") {
+        const folders =
+            trashRecord.object.folders || [];
+
+        const notes =
+            trashRecord.object.notes || [];
+
+        for (const folder of folders) {
+            await putData(
+                FOLDERS_STORE,
+                folder
+            );
+
+            data.folders.push(
+                folder
+            );
+        }
+
+        for (const note of notes) {
+            await putData(
+                NOTES_STORE,
+                note
+            );
+
+            data.notes.push(
+                note
+            );
+        }
+
+        const photos =
+            trashRecord.object.photos || [];
+
+        for (const photo of photos) {
+            await putData(
+                PHOTOS_STORE,
+                photo
+            );
+        }
+    }
+
+    await deleteData(
+        TRASH_STORE,
+        trashRecord.id
+    );
+
+    normalizeOrder();
+    await saveAllOrders();
+    renderTrash();
+}
+
+async function permanentlyDeleteTrashItem(
+    trashRecord
+) {
+    const ok =
+        confirm(
+            "このデータを完全に削除しますか？\nこの操作は元に戻せません。"
+        );
+
+    if (!ok) return;
+
+    if (trashRecord.type === "note") {
+        const ids =
+            extractPhotoIds(
+                trashRecord.object.content || ""
+            );
+
+        await deleteMany(
+            PHOTOS_STORE,
+            ids
+        );
+    }
+
+    if (trashRecord.type === "folder") {
+        const photos =
+            trashRecord.object.photos || [];
+
+        await deleteMany(
+            PHOTOS_STORE,
+            photos.map(photo => photo.id)
+        );
+    }
+
+    await deleteData(
+        TRASH_STORE,
+        trashRecord.id
+    );
+
+    renderTrash();
+}
+
+async function showTrash() {
+    const records =
+        await getAll(TRASH_STORE);
+
+    const content =
+        document.getElementById("content");
+
+    content.innerHTML = "";
+
+    const title =
+        document.createElement("div");
+
+    title.style.fontSize = "20px";
+    title.style.fontWeight = "bold";
+    title.style.marginBottom = "14px";
+    title.textContent = "🗑️ ゴミ箱";
+
+    content.appendChild(title);
+
+    const back =
+        document.createElement("button");
+
+    back.textContent = "← 戻る";
+    back.className = "collapse-all-button";
+    back.style.float = "none";
+    back.style.marginBottom = "12px";
+
+    back.onclick = () => {
+        render();
+    };
+
+    content.appendChild(back);
+
+    if (records.length === 0) {
+        const empty =
+            document.createElement("div");
+
+        empty.className = "empty";
+        empty.textContent =
+            "ゴミ箱は空です";
+
+        content.appendChild(empty);
+        return;
+    }
+
+    records
+        .sort(
+            (a,b) =>
+                b.deletedAt - a.deletedAt
+        )
+        .forEach(record => {
+            const item =
+                document.createElement("div");
+
+            item.className =
+                "item";
+
+            const row =
+                document.createElement("div");
+
+            row.className =
+                "item-row";
+
+            const name =
+                document.createElement("div");
+
+            name.className =
+                "item-main";
+
+            const obj =
+                record.object;
+
+            name.textContent =
+                record.type === "note"
+                    ? "📝 " + obj.title
+                    : "📁 " + (
+                        obj.name ||
+                        "フォルダ"
+                    );
+
+            const actions =
+                document.createElement("div");
+
+            actions.className =
+                "action-buttons";
+
+            const restore =
+                document.createElement(
+                    "button"
+                );
+
+            restore.textContent =
+                "↩️";
+
+            restore.title =
+                "復元";
+
+            restore.onclick = () => {
+                restoreTrashItem(record);
+            };
+
+            const remove =
+                document.createElement(
+                    "button"
+                );
+
+            remove.textContent =
+                "❌";
+
+            remove.title =
+                "完全に削除";
+
+            remove.onclick = () => {
+                permanentlyDeleteTrashItem(
+                    record
+                );
+            };
+
+            actions.appendChild(
+                restore
+            );
+
+            actions.appendChild(
+                remove
+            );
+
+            row.appendChild(name);
+            row.appendChild(actions);
+
+            item.appendChild(row);
+            content.appendChild(item);
+        });
+}
+
+function renderTrashButton(area) {
+    const trashButton =
+        document.createElement("button");
+
+    trashButton.textContent =
+        "🗑️ ゴミ箱";
+
+    trashButton.onclick =
+        showTrash;
+
+    area.appendChild(
+        trashButton
+    );
+}
+
+
+/* =========================================================
+   フォルダ削除
+========================================================= */
+
+async function deleteFolder(
+    folder
+) {
+
+    const ok =
+        confirm(
+            `"${folder.name}" をゴミ箱に移動しますか？
+中にあるフォルダとノートもまとめて移動されます。`
+        );
+
+    if (!ok) {
+        return;
+    }
+
+    const folderIds =
+        getAllChildFolderIds(
+            folder.id
+        );
+
+    folderIds.push(
+        folder.id
+    );
+
+    const foldersToDelete =
+        data.folders.filter(
+            f =>
+                folderIds.includes(f.id)
+        );
+
+    const notesToDelete =
+        data.notes.filter(
+            note =>
+                folderIds.includes(
+                    note.folderId
+                )
+        );
+
+    const photos = [];
+
+    for (const note of notesToDelete) {
+        const ids =
+            extractPhotoIds(
+                note.content || ""
+            );
+
+        for (const id of ids) {
+            const photo =
+                await getById(
+                    PHOTOS_STORE,
+                    id
+                );
+
+            if (photo) {
+                photos.push(photo);
+            }
+        }
+    }
+
+    await moveToTrash(
+        "folder",
+        {
+            folders: foldersToDelete,
+            notes: notesToDelete,
+            name: folder.name,
+            id: folder.id
+        },
+        {
+            photos
+        }
+    );
+
+    await deleteMany(
+        FOLDERS_STORE,
+        folderIds
+    );
+
+    await deleteMany(
+        NOTES_STORE,
+        notesToDelete.map(
+            note => note.id
+        )
+    );
+
+    await deleteMany(
+        PHOTOS_STORE,
+        photos.map(
+            photo => photo.id
+        )
+    );
+
+    data.folders =
+        data.folders.filter(
+            f =>
+                !folderIds.includes(
+                    f.id
+                )
+        );
+
+    data.notes =
+        data.notes.filter(
+            n =>
+                !notesToDelete.some(
+                    note =>
+                        note.id === n.id
+                )
+        );
+
+    if (
+        folderIds.includes(
+            currentFolderId
+        )
+    ) {
+        currentFolderId =
+            folder.parentId ||
+            null;
+    }
+
+    normalizeOrder();
+
+    await saveAllOrders();
+
+    render();
+}
+
+
+/* =========================================================
+   子フォルダ取得
+========================================================= */
+
+function getAllChildFolderIds(
+    parentId
+) {
+
+    const result = [];
+
+
+    const children =
+        data.folders.filter(
+            folder =>
+                folder.parentId ===
+                parentId
+        );
+
+
+    children.forEach(child => {
+
+        result.push(
+            child.id
+        );
+
+
+        result.push(
+            ...getAllChildFolderIds(
+                child.id
+            )
+        );
+
+    });
+
+
+    return result;
+
+}
+
+
+/* =========================================================
+   フォルダ並び替え
+========================================================= */
+
+async function moveFolderBefore(
+    draggedId,
+    targetId
+) {
+
+    const dragged =
+        data.folders.find(
+            folder =>
+                folder.id ===
+                draggedId
+        );
+
+
+    const target =
+        data.folders.find(
+            folder =>
+                folder.id ===
+                targetId
+        );
+
+
+    if (
+        !dragged ||
+        !target
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        (dragged.parentId || null) !==
+        (target.parentId || null)
+    ) {
+
+        return;
+
+    }
+
+
+    const siblings =
+        sortFolders(
+            data.folders.filter(
+                folder =>
+                    (folder.parentId || null) ===
+                    (target.parentId || null)
+            )
+        );
+
+
+    const oldIndex =
+        siblings.findIndex(
+            folder =>
+                folder.id ===
+                draggedId
+        );
+
+
+    if (oldIndex === -1) {
+
+        return;
+
+    }
+
+
+    siblings.splice(
+        oldIndex,
+        1
+    );
+
+
+    const targetIndex =
+        siblings.findIndex(
+            folder =>
+                folder.id ===
+                targetId
+        );
+
+
+    siblings.splice(
+        targetIndex,
+        0,
+        dragged
+    );
+
+
+    siblings.forEach(
+        (folder, index) => {
+
+            folder.order =
+                index;
+
+        }
+    );
+
+
+    await saveFolderOrders(
+        siblings
+    );
+
+
+    render();
+
+}
+
+
+/* =========================================================
+   ノート表示
+========================================================= */
+
+async function createNoteElement(
+    note
+) {
+
+    const item =
+        document.createElement(
+            "div"
+        );
+
+
+    item.className =
+        "item";
+
+    item.dataset.noteId =
+        note.id;
+
+
+    const row =
+        document.createElement(
+            "div"
+        );
+
+
+    row.className =
+        "item-row";
+
+
+    const handle =
+        document.createElement(
+            "div"
+        );
+
+
+    handle.className =
+        "drag-handle";
+
+
+    handle.textContent =
+        "☷";
+
+
+    handle.title =
+        "ドラッグして並び替え";
+
+
+    const main =
+        document.createElement(
+            "div"
+        );
+
+
+    main.className =
+        "item-main";
+
+
+    const title =
+        document.createElement(
+            "div"
+        );
+
+
+    title.className =
+        "note-title";
+
+
+    title.textContent =
+        (
+            note.open
+                ? "▼ "
+                : "▶ "
+        ) +
+        "📝 " +
+        note.title;
+
+
+    title.onclick = async () => {
+
+    note.open =
+        !note.open;
+
+    await saveNote(
+        note
+    );
+
+    await render();
+
+};
+
+
+    main.appendChild(
+        title
+    );
+
+
+    const actions =
+        document.createElement(
+            "div"
+        );
+
+
+    actions.className =
+        "action-buttons";
+
+
+    const rename =
+        document.createElement(
+            "button"
+        );
+
+
+    rename.textContent =
+        "✏️";
+
+
+    rename.title =
+        "名前変更";
+
+
+    rename.onclick = () => {
+
+        renameNote(note);
+
+    };
+
+
+    const del =
+        document.createElement(
+            "button"
+        );
+
+
+    del.textContent =
+        "🗑️";
+
+
+    del.title =
+        "削除";
+
+
+    del.onclick = () => {
+
+        deleteNote(note);
+
+    };
+
+
+    actions.appendChild(
+        rename
+    );
+
+
+    actions.appendChild(
+        del
+    );
+
+
+    row.appendChild(
+        handle
+    );
+
+
+    row.appendChild(
+        main
+    );
+
+
+    row.appendChild(
+        actions
+    );
+
+
+    item.appendChild(
+        row
+    );
+
+
+    setupDragEvents(
+        item,
+        "note",
+        note
+    );
+
+
+    if (note.open) {
+
+        const body =
+            document.createElement(
+                "div"
+            );
+
+
+        body.className =
+            "note-body";
+
+
+        const editor =
+            document.createElement(
+                "div"
+            );
+
+
+        editor.className =
+            "note-editor";
+
+
+        editor.contentEditable =
+            "true";
+
+
+        editor.innerHTML =
+            note.content ||
+            "";
+
+        editor.classList.toggle(
+            "font-large",
+            getNoteFontSize(note) === "large"
+        );
+
+        body.appendChild(
+            editor
+        );
+
+
+        const tools =
+            document.createElement(
+                "div"
+            );
+
+
+        tools.className =
+            "note-tools";
+
+        const inputSizeButton =
+            document.createElement(
+                "button"
+            );
+
+        inputSizeButton.className =
+            "text-size-button";
+
+        updateInputSizeButton(
+            inputSizeButton,
+            note
+        );
+
+        inputSizeButton.onclick = async () => {
+            const next =
+                getNoteFontSize(note) === "large"
+                    ? "normal"
+                    : "large";
+
+            setNoteFontSize(
+                note,
+                next
+            );
+
+            editor.classList.toggle(
+                "font-large",
+                next === "large"
+            );
+
+            updateInputSizeButton(
+                inputSizeButton,
+                note
+            );
+
+            await saveNote(note);
+        };
+
+        const largeSelectionButton =
+            document.createElement(
+                "button"
+            );
+
+        largeSelectionButton.textContent =
+            "🔠 選択部分を大";
+
+        largeSelectionButton.onclick = () => {
+            applySelectionFontSize(
+                editor,
+                "large"
+            );
+
+            note.content =
+                editor.innerHTML;
+
+            saveNote(note);
+        };
+
+        const normalSelectionButton =
+            document.createElement(
+                "button"
+            );
+
+        normalSelectionButton.textContent =
+            "🔡 選択部分を標準";
+
+        normalSelectionButton.onclick = () => {
+            applySelectionFontSize(
+                editor,
+                "normal"
+            );
+
+            note.content =
+                editor.innerHTML;
+
+            saveNote(note);
+        };
+
+        const photoButton =
+            document.createElement(
+                "button"
+            );
+
+
+        photoButton.textContent =
+            "📷 写真を追加";
+
+
+        photoButton.onclick = () => {
+
+            insertPhoto(
+                editor,
+                note
+            );
+
+        };
+
+        tools.appendChild(
+            inputSizeButton
+        );
+
+        tools.appendChild(
+            largeSelectionButton
+        );
+
+        tools.appendChild(
+            normalSelectionButton
+        );
+
+        tools.appendChild(
+            photoButton
+        );
+
+
+        body.appendChild(
+            tools
+        );
+
+
+        item.appendChild(
+            body
+        );
+
+
+        await hydratePhotos(
+            editor
+        );
+
+        editor.querySelectorAll(
+            "img[data-photo-id]"
+        ).forEach(img => {
+            setupPhotoLongPress(
+                img,
+                note,
+                editor
+            );
+        });
+
+
+        editor.addEventListener(
+            "focus",
+            () => {
+                activeEditor = editor;
+                activeEditorNote = note;
+
+                const bar =
+                    document.getElementById(
+                        "mobilePhotoBar"
+                    );
+
+                if (bar) {
+                    bar.classList.add(
+                        "visible"
+                    );
+                }
+            }
+        );
+
+        editor.addEventListener(
+            "blur",
+            () => {
+                setTimeout(() => {
+                    const active =
+                        document.activeElement;
+
+                    if (
+                        active !== editor &&
+                        !(
+                            active &&
+                            active.closest &&
+                            active.closest(
+                                ".mobile-photo-bar"
+                            )
+                        )
+                    ) {
+                        const bar =
+                            document.getElementById(
+                                "mobilePhotoBar"
+                            );
+
+                        if (bar) {
+                            bar.classList.remove(
+                                "visible"
+                            );
+                        }
+                    }
+                }, 150);
+            }
+        );
+
+
+        let saveTimer = null;
+
+
+        editor.addEventListener(
+            "input",
+            () => {
+
+                note.content =
+                    editor.innerHTML;
+
+
+                clearTimeout(
+                    saveTimer
+                );
+
+
+                saveTimer =
+                    setTimeout(
+                        () => {
+
+                            saveNote(
+                                note
+                            );
+
+                        },
+                        300
+                    );
+
+            }
+        );
+
+    }
+
+
+    return item;
+
+}
+
+
+/* =========================================================
+   ノート保存
+========================================================= */
+
+async function saveNote(
+    note
+) {
+
+    await putData(
+        NOTES_STORE,
+        note
+    );
+
+}
+
+
+/* =========================================================
+   写真追加
+========================================================= */
+
+function insertPhoto(
+    editor,
+    note
+) {
+
+    const input =
+        document.createElement(
+            "input"
+        );
+
+
+    input.type =
+        "file";
+
+
+    input.accept =
+        "image/*";
+
+
+    input.onchange =
+        async event => {
+
+            const file =
+                event.target.files[0];
+
+
+            if (!file) {
+
+                return;
+
+            }
+
+
+            try {
+
+                const photoId =
+                    createId();
+
+
+                const photo = {
+
+                    id: photoId,
+
+                    blob: file,
+
+                    name:
+                        file.name,
+
+                    type:
+                        file.type,
+
+                    createdAt:
+                        Date.now()
+
+                };
+
+
+                await putData(
+                    PHOTOS_STORE,
+                    photo
+                );
+
+
+                const img =
+                    document.createElement(
+                        "img"
+                    );
+
+
+                img.dataset.photoId =
+                    photoId;
+
+
+                const objectUrl =
+                    URL.createObjectURL(
+                        file
+                    );
+
+
+                objectUrls.push(
+                    objectUrl
+                );
+
+
+                img.src =
+                    objectUrl;
+
+
+                const selection =
+                    window.getSelection();
+
+
+                if (
+                    selection.rangeCount > 0 &&
+                    editor.contains(
+                        selection.anchorNode
+                    )
+                ) {
+
+                    const range =
+                        selection.getRangeAt(
+                            0
+                        );
+
+
+                    range.deleteContents();
+
+
+                    range.insertNode(
+                        img
+                    );
+
+
+                    range.setStartAfter(
+                        img
+                    );
+
+
+                    range.collapse(
+                        true
+                    );
+
+
+                    selection.removeAllRanges();
+
+
+                    selection.addRange(
+                        range
+                    );
+
+                } else {
+
+                    editor.appendChild(
+                        img
+                    );
+
+                }
+
+
+                note.content =
+                    editor.innerHTML;
+
+
+                await saveNote(
+                    note
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "写真保存エラー",
+                    error
+                );
+
+
+                alert(
+                    "写真の保存に失敗しました。"
+                );
+
+            }
+
+        };
+
+
+    input.click();
+
+}
+
+
+/* =========================================================
+   写真を表示
+========================================================= */
+
+async function hydratePhotos(
+    editor
+) {
+
+    const images =
+        editor.querySelectorAll(
+            "img[data-photo-id]"
+        );
+
+
+    for (
+        const img of images
+    ) {
+
+        const photoId =
+            img.dataset.photoId;
+
+
+        try {
+
+            const photo =
+                await getById(
+                    PHOTOS_STORE,
+                    photoId
+                );
+
+
+            if (!photo) {
+
+                continue;
+
+            }
+
+
+            const url =
+                URL.createObjectURL(
+                    photo.blob
+                );
+
+
+            objectUrls.push(
+                url
+            );
+
+
+            img.src =
+                url;
+
+        } catch (error) {
+
+            console.error(
+                "写真読み込みエラー",
+                error
+            );
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   ID検索
+========================================================= */
+
+function getById(
+    storeName,
+    id
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const transaction =
+                db.transaction(
+                    storeName,
+                    "readonly"
+                );
+
+
+            const store =
+                transaction.objectStore(
+                    storeName
+                );
+
+
+            const request =
+                store.get(id);
+
+
+            request.onsuccess =
+                () => {
+
+                    resolve(
+                        request.result
+                    );
+
+                };
+
+
+            request.onerror =
+                () => {
+
+                    reject(
+                        request.error
+                    );
+
+                };
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   ObjectURL解放
+========================================================= */
+
+function revokeObjectUrls() {
+
+    objectUrls.forEach(
+        url => {
+
+            URL.revokeObjectURL(
+                url
+            );
+
+        }
+    );
+
+
+    objectUrls = [];
+
+}
+
+
+/* =========================================================
+   ノート名前変更
+========================================================= */
+
+async function renameNote(
+    note
+) {
+
+    const title =
+        prompt(
+            "新しいタイトル",
+            note.title
+        );
+
+
+    if (!title) {
+
+        return;
+
+    }
+
+
+    note.title =
+        title;
+
+
+    await saveNote(
+        note
+    );
+
+
+    render();
+
+}
+
+
+/* =========================================================
+   ノート削除
+========================================================= */
+
+async function deleteNote(
+    note
+) {
+
+    const ok =
+        confirm(
+            `"${note.title}" をゴミ箱に移動しますか？`
+        );
+
+    if (!ok) {
+        return;
+    }
+
+    const photoIds =
+        extractPhotoIds(
+            note.content || ""
+        );
+
+    const photos = [];
+
+    for (const photoId of photoIds) {
+        const photo =
+            await getById(
+                PHOTOS_STORE,
+                photoId
+            );
+
+        if (photo) {
+            photos.push(photo);
+        }
+    }
+
+    await moveToTrash(
+        "note",
+        note,
+        {
+            photos
+        }
+    );
+
+    await deleteData(
+        NOTES_STORE,
+        note.id
+    );
+
+    await deleteMany(
+        PHOTOS_STORE,
+        photoIds
+    );
+
+    data.notes =
+        data.notes.filter(
+            n =>
+                n.id !== note.id
+        );
+
+    normalizeOrder();
+
+    await saveAllOrders();
+
+    render();
+}
+
+
+/* =========================================================
+   ノート並び替え
+========================================================= */
+
+async function moveNoteBefore(
+    draggedId,
+    targetId
+) {
+
+    const dragged =
+        data.notes.find(
+            note =>
+                note.id ===
+                draggedId
+        );
+
+
+    const target =
+        data.notes.find(
+            note =>
+                note.id ===
+                targetId
+        );
+
+
+    if (
+        !dragged ||
+        !target
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        (dragged.folderId || null) !==
+        (target.folderId || null)
+    ) {
+
+        return;
+
+    }
+
+
+    const siblings =
+        sortNotes(
+            data.notes.filter(
+                note =>
+                    (note.folderId || null) ===
+                    (target.folderId || null)
+            )
+        );
+
+
+    const oldIndex =
+        siblings.findIndex(
+            note =>
+                note.id ===
+                draggedId
+        );
+
+
+    if (oldIndex === -1) {
+
+        return;
+
+    }
+
+
+    siblings.splice(
+        oldIndex,
+        1
+    );
+
+
+    const targetIndex =
+        siblings.findIndex(
+            note =>
+                note.id ===
+                targetId
+        );
+
+
+    siblings.splice(
+        targetIndex,
+        0,
+        dragged
+    );
+
+
+    siblings.forEach(
+        (note, index) => {
+
+            note.order =
+                index;
+
+        }
+    );
+
+
+    await saveNoteOrders(
+        siblings
+    );
+
+
+    render();
+
+}
+
+
+/* =========================================================
+   ノート追加
+========================================================= */
+
+async function addNote() {
+
+    const title =
+        prompt(
+            "ノートのタイトル"
+        );
+
+
+    if (!title) {
+
+        return;
+
+    }
+
+
+    const siblings =
+        data.notes.filter(
+            note =>
+                (note.folderId || null) ===
+                currentFolderId
+        );
+
+
+    const note = {
+
+        id: createId(),
+
+        folderId:
+            currentFolderId,
+
+        title: title,
+
+        content: "",
+
+        open: true,
+
+        fontSize: "normal",
+
+        order:
+            siblings.length
+
+    };
+
+
+    await putData(
+        NOTES_STORE,
+        note
+    );
+
+
+    data.notes.push(
+        note
+    );
+
+
+    render();
+
+}
+
+
+/* =========================================================
+   検索
+========================================================= */
+
+function stripHtml(
+    html
+) {
+
+    const div =
+        document.createElement(
+            "div"
+        );
+
+
+    div.innerHTML =
+        html;
+
+
+    return (
+        div.textContent ||
+        ""
+    );
+
+}
+
+
+/* =========================================================
+   フォルダパス文字列
+========================================================= */
+
+function getFolderPathText(
+    folderId
+) {
+
+    const path =
+        getFolderPath(
+            folderId
+        );
+
+
+    if (
+        path.length === 0
+    ) {
+
+        return "ホーム";
+
+    }
+
+
+    return path
+        .map(
+            folder =>
+                folder.name
+        )
+        .join(" / ");
+
+}
+
+
+/* =========================================================
+   検索
+========================================================= */
+
+async function searchNotes(
+    keyword
+) {
+
+    const content =
+        document.getElementById(
+            "content"
+        );
+
+
+    content.innerHTML = "";
+
+
+    const lower =
+        keyword.toLowerCase();
+
+
+    const results =
+        data.notes.filter(
+            note => {
+
+                const title =
+                    (
+                        note.title ||
+                        ""
+                    ).toLowerCase();
+
+
+                const body =
+                    stripHtml(
+                        note.content ||
+                        ""
+                    ).toLowerCase();
+
+
+                return (
+                    title.includes(
+                        lower
+                    ) ||
+                    body.includes(
+                        lower
+                    )
+                );
+
+            }
+        );
+
+
+    if (
+        results.length === 0
+    ) {
+
+        const empty =
+            document.createElement(
+                "div"
+            );
+
+
+        empty.className =
+            "empty";
+
+
+        empty.textContent =
+            "該当するノートがありません";
+
+
+        content.appendChild(
+            empty
+        );
+
+
+        return;
+
+    }
+
+
+    results.forEach(note => {
+
+        const result =
+            document.createElement(
+                "div"
+            );
+
+
+        result.className =
+            "search-result";
+
+
+        const title =
+            document.createElement(
+                "div"
+            );
+
+
+        title.textContent =
+            "📝 " +
+            note.title;
+
+
+        const folder =
+            document.createElement(
+                "div"
+            );
+
+
+        folder.className =
+            "search-result-folder";
+
+
+        folder.textContent =
+            "📁 " +
+            getFolderPathText(
+                note.folderId
+            );
+
+
+        result.appendChild(
+            title
+        );
+
+
+        result.appendChild(
+            folder
+        );
+
+
+        result.onclick = () => {
+
+            currentFolderId =
+                note.folderId ||
+                null;
+
+
+            note.open =
+                true;
+
+
+            document.getElementById(
+                "searchInput"
+            ).value = "";
+
+
+            render();
+
+        };
+
+
+        content.appendChild(
+            result
+        );
+
+    });
+
+}
+
+
+/* =========================================================
+   写真UIイベント
+========================================================= */
+
+document
+    .getElementById(
+        "mobilePhotoButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+            if (
+                activeEditor &&
+                activeEditorNote
+            ) {
+                insertPhoto(
+                    activeEditor,
+                    activeEditorNote
+                );
+            }
+        }
+    );
+
+document
+    .getElementById(
+        "deleteSelectedPhotoButton"
+    )
+    .addEventListener(
+        "click",
+        deleteSelectedPhoto
+    );
+
+document.addEventListener(
+    "pointerdown",
+    event => {
+        const menu =
+            document.getElementById(
+                "photoDeleteMenu"
+            );
+
+        if (
+            menu.style.display === "block" &&
+            !menu.contains(event.target) &&
+            event.target !== selectedPhoto
+        ) {
+            closePhotoDeleteMenu();
+        }
+    }
+);
+
+
+/* =========================================================
+   検索イベント
+========================================================= */
+
+document
+    .getElementById(
+        "searchInput"
+    )
+    .addEventListener(
+        "input",
+        event => {
+
+            const keyword =
+                event.target.value.trim();
+
+            currentSearchKeyword =
+                keyword;
+
+            const clearButton =
+                document.getElementById(
+                    "clearSearchButton"
+                );
+
+            if (clearButton) {
+                clearButton.style.display =
+                    keyword
+                        ? "block"
+                        : "none";
+            }
+
+
+            if (keyword) {
+
+                searchNotes(
+                    keyword
+                );
+
+            } else {
+
+                render();
+
+            }
+
+        }
+    );
+
+document
+    .getElementById(
+        "clearSearchButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+            document.getElementById(
+                "searchInput"
+            ).value = "";
+
+            currentSearchKeyword = "";
+
+            clearSearchHighlight();
+
+            document.getElementById(
+                "clearSearchButton"
+            ).style.display = "none";
+
+            render();
+        }
+    );
+
+
+/* =========================================================
+   下部ボタン
+========================================================= */
+
+function renderBottomButtons() {
+
+    const area =
+        document.getElementById(
+            "bottomButtons"
+        );
+
+
+    area.innerHTML = "";
+
+
+    const folderButton =
+        document.createElement(
+            "button"
+        );
+
+
+    folderButton.textContent =
+        "＋ フォルダ";
+
+
+    folderButton.onclick =
+        addFolder;
+
+
+    const noteButton =
+        document.createElement(
+            "button"
+        );
+
+
+    noteButton.textContent =
+        "＋ ノート";
+
+
+    noteButton.onclick =
+        addNote;
+
+
+    area.appendChild(
+        folderButton
+    );
+
+
+    area.appendChild(
+        noteButton
+    );
+
+    renderTrashButton(area);
+
+}
+
+
+/* =========================================================
+   順番保存
+========================================================= */
+
+async function saveFolderOrders(
+    folders
+) {
+
+    await putMany(
+        FOLDERS_STORE,
+        folders
+    );
+
+}
+
+
+async function saveNoteOrders(
+    notes
+) {
+
+    await putMany(
+        NOTES_STORE,
+        notes
+    );
+
+}
+
+
+async function saveAllOrders() {
+
+    await putMany(
+        FOLDERS_STORE,
+        data.folders
+    );
+
+
+    await putMany(
+        NOTES_STORE,
+        data.notes
+    );
+
+}
+
+
+/* =========================================================
+   写真ID抽出
+========================================================= */
+
+function extractPhotoIds(
+    html
+) {
+
+    const div =
+        document.createElement(
+            "div"
+        );
+
+
+    div.innerHTML =
+        html;
+
+
+    const images =
+        div.querySelectorAll(
+            "img[data-photo-id]"
+        );
+
+
+    return Array.from(
+        images
+    ).map(
+        img =>
+            img.dataset.photoId
+    );
+
+}
+
+
+/* =========================================================
+   古いlocalStorageから移行
+========================================================= */
+
+async function migrateOldData() {
+
+    const oldData =
+        localStorage.getItem(
+            "myNoteData"
+        );
+
+
+    if (!oldData) {
+
+        return;
+
+    }
+
+
+    const migrationKey =
+        "myNoteIndexedDBMigrationDone";
+
+
+    if (
+        localStorage.getItem(
+            migrationKey
+        ) === "true"
+    ) {
+
+        return;
+
+    }
+
+
+    let old;
+
+
+    try {
+
+        old =
+            JSON.parse(
+                oldData
+            );
+
+    } catch (error) {
+
+        console.error(
+            "旧データ読み込みエラー",
+            error
+        );
+
+
+        return;
+
+    }
+
+
+    if (
+        !old ||
+        !Array.isArray(
+            old.folders
+        ) ||
+        !Array.isArray(
+            old.notes
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    const folders =
+        old.folders.map(
+            (folder, index) => ({
+
+                ...folder,
+
+                order:
+                    folder.order ??
+                    index
+
+            })
+        );
+
+
+    const notes = [];
+
+
+    for (
+        let i = 0;
+        i < old.notes.length;
+        i++
+    ) {
+
+        const oldNote =
+            old.notes[i];
+
+
+        let content =
+            oldNote.content ||
+            "";
+
+
+        const div =
+            document.createElement(
+                "div"
+            );
+
+
+        div.innerHTML =
+            content;
+
+
+        const images =
+            Array.from(
+                div.querySelectorAll(
+                    "img"
+                )
+            );
+
+
+        for (
+            const img of images
+        ) {
+
+            const src =
+                img.getAttribute(
+                    "src"
+                );
+
+
+            if (
+                !src ||
+                !src.startsWith(
+                    "data:"
+                )
+            ) {
+
+                continue;
+
+            }
+
+
+            try {
+
+                const blob =
+                    dataUrlToBlob(
+                        src
+                    );
+
+
+                const photoId =
+                    createId();
+
+
+                await putData(
+                    PHOTOS_STORE,
+                    {
+
+                        id:
+                            photoId,
+
+                        blob:
+                            blob,
+
+                        name:
+                            "migrated-image",
+
+                        type:
+                            blob.type,
+
+                        createdAt:
+                            Date.now()
+
+                    }
+                );
+
+
+                img.removeAttribute(
+                    "src"
+                );
+
+
+                img.dataset.photoId =
+                    photoId;
+
+            } catch (error) {
+
+                console.error(
+                    "写真移行エラー",
+                    error
+                );
+
+            }
+
+        }
+
+
+        content =
+            div.innerHTML;
+
+
+        notes.push({
+
+            ...oldNote,
+
+            content:
+
+                content,
+
+            fontSize:
+
+                oldNote.fontSize === "large"
+                    ? "large"
+                    : "normal",
+
+            order:
+
+                oldNote.order ??
+                i
+
+        });
+
+    }
+
+
+    await putMany(
+        FOLDERS_STORE,
+        folders
+    );
+
+
+    await putMany(
+        NOTES_STORE,
+        notes
+    );
+
+
+    localStorage.setItem(
+        migrationKey,
+        "true"
+    );
+
+
+    console.log(
+        "localStorageからIndexedDBへの移行完了"
+    );
+
+}
+
+
+/* =========================================================
+   Data URL → Blob
+========================================================= */
+
+function dataUrlToBlob(
+    dataUrl
+) {
+
+    const parts =
+        dataUrl.split(",");
+
+
+    const mimeMatch =
+        parts[0].match(
+            /:(.*?);/
+        );
+
+
+    const mime =
+        mimeMatch
+            ? mimeMatch[1]
+            : "application/octet-stream";
+
+
+    const binary =
+        atob(
+            parts[1]
+        );
+
+
+    const array =
+        new Uint8Array(
+            binary.length
+        );
+
+
+    for (
+        let i = 0;
+        i < binary.length;
+        i++
+    ) {
+
+        array[i] =
+            binary.charCodeAt(i);
+
+    }
+
+
+    return new Blob(
+        [array],
+        {
+            type: mime
+        }
+    );
+
+}
+
+
+/* =========================================================
+   起動
+========================================================= */
+
+async function init() {
+
+    try {
+
+        await openDatabase();
+
+
+        /*
+         * まず旧localStorageをIndexedDBへ移行
+         */
+        await migrateOldData();
+
+
+        /*
+         * IndexedDBから読み込み
+         */
+        await loadData();
+
+
+        /*
+         * 初期データの順番を整える
+         */
+        normalizeOrder();
+
+
+        await saveAllOrders();
+
+
+        await render();
+
+
+        document.getElementById(
+            "storageInfo"
+        ).textContent =
+            "💾 データはIndexedDBに保存されています";
+
+
+    } catch (error) {
+
+        console.error(
+            "My Note起動エラー",
+            error
+        );
+
+
+        document.getElementById(
+            "content"
+        ).innerHTML = `
+            <div class="empty">
+                ⚠️ データベースの起動に失敗しました。<br><br>
+                ブラウザを再読み込みしてください。
+            </div>
+        `;
+
+    }
+
+}
+
+
+init();
+
+
+/* =========================================================
+   PWA Service Worker
+========================================================= */
+
+if ("serviceWorker" in navigator) {
+
+    window.addEventListener(
+        "load",
+        () => {
+
+            navigator.serviceWorker
+                .register(
+                    "./service-worker.js"
+                )
+                .then(
+                    registration => {
+
+                        console.log(
+                            "Service Worker登録完了",
+                            registration
+                        );
+
+                    }
+                )
+                .catch(
+                    error => {
+
+                        console.error(
+                            "Service Worker登録失敗",
+                            error
+                        );
+
+                    }
+                );
+
+        }
+    );
+
+}
+
+</script>
+
+</body>
+</html>
