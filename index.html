@@ -420,6 +420,22 @@ header {
     -webkit-touch-callout: none;
 }
 
+.note-editor.uniform-font, .note-editor.uniform-font * { font-size: 16px !important; }
+.note-editor.uniform-font.font-large, .note-editor.uniform-font.font-large * { font-size: 21px !important; }
+.note-tools button { min-height: 44px; }
+.note-tools { flex-wrap: wrap; }
+.paragraph-dialog { width:min(94vw,600px); max-height:85dvh; border:0; border-radius:16px; padding:16px; color:#222; }
+.paragraph-dialog::backdrop { background:#0008; }
+.paragraph-dialog-header { display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:-16px; background:white; padding:12px 0; z-index:1; }
+.paragraph-dialog h2 { font-size:18px; margin:0; }
+.paragraph-dialog button { min-height:44px; padding:10px 14px; border:1px solid #bbb; background:#f4f5f7; border-radius:8px; color:#222; font-size:16px; }
+.paragraph-choice { padding:12px; border:1px solid #ddd; border-radius:10px; margin:10px 0; }
+.paragraph-preview { white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; line-height:1.6; }
+.paragraph-choice img { width:72px; height:64px; object-fit:cover; margin:6px; }
+.paragraph-size-controls { display:flex; gap:10px; margin-top:10px; }
+.paragraph-size-controls button { flex:1; }
+.paragraph-size-controls button[aria-pressed="true"] { background:#e1edff; border-color:#3879bd; }
+.photo-position { display:block; width:100%; color:#155ca5 !important; background:#edf5ff !important; border-style:dashed !important; }
 </style>
 </head>
 
@@ -476,6 +492,7 @@ header {
 </div>
 
 <div id="mobilePhotoBar" class="mobile-photo-bar">
+    <button id="mobileSizeButton">🔤 文字サイズ</button>
     <button id="mobilePhotoButton">📷 写真を追加</button>
 </div>
 
@@ -648,189 +665,27 @@ function getAll(storeName) {
    データ保存
 ========================================================= */
 
-function putData(
-    storeName,
-    value
-) {
-
+// Resolve only after the whole transaction commits; aborts must reject.
+function writeBatch(operations) {
     return new Promise((resolve, reject) => {
-
-        const transaction =
-            db.transaction(
-                storeName,
-                "readwrite"
-            );
-
-        const store =
-            transaction.objectStore(
-                storeName
-            );
-
-        const request =
-            store.put(value);
-
-
-        request.onsuccess = () => {
-
-            resolve();
-        };
-
-
-        request.onerror = () => {
-
-            reject(
-                request.error
-            );
-        };
-
+        if (!operations.length) return resolve();
+        const tx = db.transaction([...new Set(operations.map(op => op.store))], "readwrite");
+        tx.oncomplete = () => resolve();
+        tx.onabort = tx.onerror = () => reject(tx.error || new Error("保存が中断されました"));
+        try {
+            for (const op of operations) tx.objectStore(op.store)[op.action](op.value);
+        } catch (error) { tx.abort(); reject(error); }
     });
 }
+const putData = (store, value) => writeBatch([{store, action:"put", value}]);
+const deleteData = (store, value) => writeBatch([{store, action:"delete", value}]);
+const putMany = (store, values) => writeBatch(values.map(value => ({store, action:"put", value})));
+const deleteMany = (store, values) => writeBatch(values.map(value => ({store, action:"delete", value})));
 
-
-/* =========================================================
-   データ削除
-========================================================= */
-
-function deleteData(
-    storeName,
-    id
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const transaction =
-            db.transaction(
-                storeName,
-                "readwrite"
-            );
-
-        const store =
-            transaction.objectStore(
-                storeName
-            );
-
-        const request =
-            store.delete(id);
-
-
-        request.onsuccess = () => {
-
-            resolve();
-        };
-
-
-        request.onerror = () => {
-
-            reject(
-                request.error
-            );
-        };
-
-    });
-}
-
-
-/* =========================================================
-   複数データ保存
-========================================================= */
-
-function putMany(
-    storeName,
-    values
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const transaction =
-            db.transaction(
-                storeName,
-                "readwrite"
-            );
-
-        const store =
-            transaction.objectStore(
-                storeName
-            );
-
-
-        values.forEach(value => {
-
-            store.put(value);
-
-        });
-
-
-        transaction.oncomplete = () => {
-
-            resolve();
-        };
-
-
-        transaction.onerror = () => {
-
-            reject(
-                transaction.error
-            );
-        };
-
-    });
-}
-
-
-/* =========================================================
-   複数データ削除
-========================================================= */
-
-function deleteMany(
-    storeName,
-    ids
-) {
-
-    return new Promise((resolve, reject) => {
-
-        if (ids.length === 0) {
-
-            resolve();
-
-            return;
-        }
-
-
-        const transaction =
-            db.transaction(
-                storeName,
-                "readwrite"
-            );
-
-        const store =
-            transaction.objectStore(
-                storeName
-            );
-
-
-        ids.forEach(id => {
-
-            store.delete(id);
-
-        });
-
-
-        transaction.oncomplete = () => {
-
-            resolve();
-        };
-
-
-        transaction.onerror = () => {
-
-            reject(
-                transaction.error
-            );
-        };
-
-    });
-}
-
+window.addEventListener("unhandledrejection", event => {
+    console.error(event.reason);
+    document.getElementById("storageInfo").textContent = "⚠️ 操作を保存できませんでした。画面を閉じず、本文をコピーして保管してください。";
+});
 
 /* =========================================================
    現在のデータ
@@ -881,40 +736,11 @@ function updateInputSizeButton(button, note) {
     const large = getNoteFontSize(note) === "large";
 
     button.textContent = large
-        ? "🔤 入力：大"
-        : "🔤 入力：標準";
+        ? "🔤 このノートの文字：大"
+        : "🔤 このノートの文字：標準";
 
     button.classList.toggle("active", large);
-}
-
-/* 選択範囲の文字サイズ変更 */
-function applySelectionFontSize(editor, size) {
-    if (!editor) return;
-
-    editor.focus();
-
-    const selection = window.getSelection();
-
-    if (
-        !selection ||
-        selection.rangeCount === 0 ||
-        !editor.contains(selection.anchorNode) ||
-        !editor.contains(selection.focusNode) ||
-        selection.isCollapsed
-    ) {
-        return;
-    }
-
-    const range = selection.getRangeAt(0);
-
-    if (size === "large") {
-        document.execCommand("fontSize", false, "5");
-    } else {
-        document.execCommand("fontSize", false, "3");
-    }
-
-    selection.removeAllRanges();
-    selection.addRange(range);
+    button.setAttribute("aria-pressed", String(large));
 }
 
 /* =========================================================
@@ -985,16 +811,12 @@ async function deleteSelectedPhoto() {
     selectedPhoto.remove();
 
     selectedPhotoNote.content =
-        selectedPhotoEditor.innerHTML;
+        serializeEditor(selectedPhotoEditor);
 
-    await deleteData(
-        PHOTOS_STORE,
-        photoId
-    );
-
-    await saveNote(
-        selectedPhotoNote
-    );
+    await writeBatch([
+        {store:NOTES_STORE, action:"put", value:selectedPhotoNote},
+        {store:PHOTOS_STORE, action:"delete", value:photoId}
+    ]);
 
     closePhotoDeleteMenu();
 }
@@ -1480,6 +1302,11 @@ function sortNotes(notes) {
 ========================================================= */
 
 async function render() {
+    closeParagraphDialog();
+    activeEditor = null;
+    activeEditorNote = null;
+    closePhotoDeleteMenu();
+    document.getElementById("mobilePhotoBar").classList.remove("visible");
 
     revokeObjectUrls();
 
@@ -2637,83 +2464,36 @@ async function moveToTrash(type, object, extra = {}) {
         deletedAt: Date.now()
     };
 
-    await putData(
-        TRASH_STORE,
-        trashRecord
-    );
+    const folders = type === "folder" ? object.folders : [];
+    const notes = type === "folder" ? object.notes : [object];
+    await writeBatch([
+        {store: TRASH_STORE, action: "put", value: trashRecord},
+        ...folders.map(f => ({store:FOLDERS_STORE, action:"delete", value:f.id})),
+        ...notes.map(n => ({store:NOTES_STORE, action:"delete", value:n.id})),
+        ...(extra.photos || []).map(p => ({store:PHOTOS_STORE, action:"delete", value:p.id}))
+    ]);
 
     return trashRecord;
 }
 
-async function restoreTrashItem(trashRecord) {
-    if (trashRecord.type === "note") {
-        await putData(
-            NOTES_STORE,
-            trashRecord.object
-        );
-
-        data.notes.push(
-            trashRecord.object
-        );
-
-        if (trashRecord.photos) {
-            for (const photo of trashRecord.photos) {
-                await putData(
-                    PHOTOS_STORE,
-                    photo
-                );
-            }
-        }
-    }
-
-    if (trashRecord.type === "folder") {
-        const folders =
-            trashRecord.object.folders || [];
-
-        const notes =
-            trashRecord.object.notes || [];
-
-        for (const folder of folders) {
-            await putData(
-                FOLDERS_STORE,
-                folder
-            );
-
-            data.folders.push(
-                folder
-            );
-        }
-
-        for (const note of notes) {
-            await putData(
-                NOTES_STORE,
-                note
-            );
-
-            data.notes.push(
-                note
-            );
-        }
-
-        const photos =
-            trashRecord.object.photos || [];
-
-        for (const photo of photos) {
-            await putData(
-                PHOTOS_STORE,
-                photo
-            );
-        }
-    }
-
-    await deleteData(
-        TRASH_STORE,
-        trashRecord.id
-    );
-
-    normalizeOrder();
-    await saveAllOrders();
-    renderTrash();
+async function restoreTrashItem(record) {
+    // Read again so a rapid second tap cannot restore the same record twice.
+    record = await getById(TRASH_STORE, record.id);
+    if (!record) return;
+    const folders = record.type === "folder" ? structuredClone(record.object.folders || []) : [];
+    const notes = record.type === "folder" ? structuredClone(record.object.notes || []) : [structuredClone(record.object)];
+    const available = new Set([...data.folders, ...folders].map(f => f.id));
+    folders.forEach(f => { if (!available.has(f.parentId)) f.parentId = null; });
+    notes.forEach(n => { if (!available.has(n.folderId)) n.folderId = null; });
+    const photos = record.photos || record.object.photos || [];
+    await writeBatch([
+        ...folders.map(value => ({store:FOLDERS_STORE, action:"put", value})),
+        ...notes.map(value => ({store:NOTES_STORE, action:"put", value})),
+        ...photos.map(value => ({store:PHOTOS_STORE, action:"put", value})),
+        {store:TRASH_STORE, action:"delete", value:record.id}
+    ]);
+    await loadData();
+    await showTrash();
 }
 
 async function permanentlyDeleteTrashItem(
@@ -2726,37 +2506,16 @@ async function permanentlyDeleteTrashItem(
 
     if (!ok) return;
 
-    if (trashRecord.type === "note") {
-        const ids =
-            extractPhotoIds(
-                trashRecord.object.content || ""
-            );
-
-        await deleteMany(
-            PHOTOS_STORE,
-            ids
-        );
-    }
-
-    if (trashRecord.type === "folder") {
-        const photos =
-            trashRecord.object.photos || [];
-
-        await deleteMany(
-            PHOTOS_STORE,
-            photos.map(photo => photo.id)
-        );
-    }
-
     await deleteData(
         TRASH_STORE,
         trashRecord.id
     );
 
-    renderTrash();
+    await showTrash();
 }
 
 async function showTrash() {
+    closeParagraphDialog();
     const records =
         await getAll(TRASH_STORE);
 
@@ -2979,25 +2738,6 @@ async function deleteFolder(
         {
             photos
         }
-    );
-
-    await deleteMany(
-        FOLDERS_STORE,
-        folderIds
-    );
-
-    await deleteMany(
-        NOTES_STORE,
-        notesToDelete.map(
-            note => note.id
-        )
-    );
-
-    await deleteMany(
-        PHOTOS_STORE,
-        photos.map(
-            photo => photo.id
-        )
     );
 
     data.folders =
@@ -3408,6 +3148,8 @@ async function createNoteElement(
             getNoteFontSize(note) === "large"
         );
 
+        editor.classList.toggle("uniform-font", !!note.uniformFont);
+
         body.appendChild(
             editor
         );
@@ -3422,122 +3164,9 @@ async function createNoteElement(
         tools.className =
             "note-tools";
 
-        const inputSizeButton =
-            document.createElement(
-                "button"
-            );
+        attachParagraphTools(editor, note, tools);
 
-        inputSizeButton.className =
-            "text-size-button";
-
-        updateInputSizeButton(
-            inputSizeButton,
-            note
-        );
-
-        inputSizeButton.onclick = async () => {
-            const next =
-                getNoteFontSize(note) === "large"
-                    ? "normal"
-                    : "large";
-
-            setNoteFontSize(
-                note,
-                next
-            );
-
-            editor.classList.toggle(
-                "font-large",
-                next === "large"
-            );
-
-            updateInputSizeButton(
-                inputSizeButton,
-                note
-            );
-
-            await saveNote(note);
-        };
-
-        const largeSelectionButton =
-            document.createElement(
-                "button"
-            );
-
-        largeSelectionButton.textContent =
-            "🔠 選択部分を大";
-
-        largeSelectionButton.onclick = () => {
-            applySelectionFontSize(
-                editor,
-                "large"
-            );
-
-            note.content =
-                editor.innerHTML;
-
-            saveNote(note);
-        };
-
-        const normalSelectionButton =
-            document.createElement(
-                "button"
-            );
-
-        normalSelectionButton.textContent =
-            "🔡 選択部分を標準";
-
-        normalSelectionButton.onclick = () => {
-            applySelectionFontSize(
-                editor,
-                "normal"
-            );
-
-            note.content =
-                editor.innerHTML;
-
-            saveNote(note);
-        };
-
-        const photoButton =
-            document.createElement(
-                "button"
-            );
-
-
-        photoButton.textContent =
-            "📷 写真を追加";
-
-
-        photoButton.onclick = () => {
-
-            insertPhoto(
-                editor,
-                note
-            );
-
-        };
-
-        tools.appendChild(
-            inputSizeButton
-        );
-
-        tools.appendChild(
-            largeSelectionButton
-        );
-
-        tools.appendChild(
-            normalSelectionButton
-        );
-
-        tools.appendChild(
-            photoButton
-        );
-
-
-        body.appendChild(
-            tools
-        );
+        body.insertBefore(tools, editor);
 
 
         item.appendChild(
@@ -3612,36 +3241,10 @@ async function createNoteElement(
         );
 
 
-        let saveTimer = null;
-
-
-        editor.addEventListener(
-            "input",
-            () => {
-
-                note.content =
-                    editor.innerHTML;
-
-
-                clearTimeout(
-                    saveTimer
-                );
-
-
-                saveTimer =
-                    setTimeout(
-                        () => {
-
-                            saveNote(
-                                note
-                            );
-
-                        },
-                        300
-                    );
-
-            }
-        );
+        editor.addEventListener("input", () => {
+            note.content = serializeEditor(editor);
+            saveNote(note);
+        });
 
     }
 
@@ -3654,6 +3257,13 @@ async function createNoteElement(
 /* =========================================================
    ノート保存
 ========================================================= */
+
+function serializeEditor(editor) {
+    const copy = editor.cloneNode(true);
+    copy.querySelectorAll(".search-highlight").forEach(mark => mark.replaceWith(...mark.childNodes));
+    copy.querySelectorAll("img[data-photo-id]").forEach(img => img.removeAttribute("src"));
+    return copy.innerHTML;
+}
 
 async function saveNote(
     note
@@ -3673,8 +3283,13 @@ async function saveNote(
 
 function insertPhoto(
     editor,
-    note
+    note,
+    chosenRange = null
 ) {
+    const selectionBeforePicker = window.getSelection();
+    const insertionRange = chosenRange || (selectionBeforePicker?.rangeCount &&
+        editor.contains(selectionBeforePicker.anchorNode) && editor.contains(selectionBeforePicker.focusNode)
+        ? selectionBeforePicker.getRangeAt(0).cloneRange() : null);
 
     const input =
         document.createElement(
@@ -3697,7 +3312,7 @@ function insertPhoto(
                 event.target.files[0];
 
 
-            if (!file) {
+            if (!file || !editor.isConnected || !data.notes.some(n => n.id === note.id)) {
 
                 return;
 
@@ -3757,6 +3372,7 @@ function insertPhoto(
 
                 img.src =
                     objectUrl;
+                setupPhotoLongPress(img, note, editor);
 
 
                 const selection =
@@ -3764,16 +3380,10 @@ function insertPhoto(
 
 
                 if (
-                    selection.rangeCount > 0 &&
-                    editor.contains(
-                        selection.anchorNode
-                    )
+                    insertionRange && editor.contains(insertionRange.startContainer) && editor.contains(insertionRange.endContainer)
                 ) {
 
-                    const range =
-                        selection.getRangeAt(
-                            0
-                        );
+                    const range = insertionRange;
 
 
                     range.deleteContents();
@@ -3811,7 +3421,7 @@ function insertPhoto(
 
 
                 note.content =
-                    editor.innerHTML;
+                    serializeEditor(editor);
 
 
                 await saveNote(
@@ -4060,16 +3670,6 @@ async function deleteNote(
         {
             photos
         }
-    );
-
-    await deleteData(
-        NOTES_STORE,
-        note.id
-    );
-
-    await deleteMany(
-        PHOTOS_STORE,
-        photoIds
     );
 
     data.notes =
@@ -4450,25 +4050,7 @@ async function searchNotes(
         );
 
 
-        result.onclick = () => {
-
-            currentFolderId =
-                note.folderId ||
-                null;
-
-
-            note.open =
-                true;
-
-
-            document.getElementById(
-                "searchInput"
-            ).value = "";
-
-
-            render();
-
-        };
+        result.onclick = () => openSearchResult(note, keyword);
 
 
         content.appendChild(
@@ -4483,6 +4065,9 @@ async function searchNotes(
 /* =========================================================
    写真UIイベント
 ========================================================= */
+document.getElementById("mobileSizeButton").addEventListener("pointerdown", e => e.preventDefault());
+document.getElementById("mobileSizeButton").onclick = () => openParagraphDialog(activeEditor, activeEditorNote, "size");
+document.getElementById("mobilePhotoButton").addEventListener("pointerdown", e => e.preventDefault());
 
 document
     .getElementById(
@@ -4495,10 +4080,7 @@ document
                 activeEditor &&
                 activeEditorNote
             ) {
-                insertPhoto(
-                    activeEditor,
-                    activeEditorNote
-                );
+                openParagraphDialog(activeEditor, activeEditorNote, "photo");
             }
         }
     );
@@ -4808,8 +4390,10 @@ async function migrateOldData() {
     }
 
 
+    const existingFolders = new Set((await getAll(FOLDERS_STORE)).map(f => f.id));
+    const existingNotes = new Set((await getAll(NOTES_STORE)).map(n => n.id));
     const folders =
-        old.folders.map(
+        old.folders.filter(f => !existingFolders.has(f.id)).map(
             (folder, index) => ({
 
                 ...folder,
@@ -4834,6 +4418,8 @@ async function migrateOldData() {
         const oldNote =
             old.notes[i];
 
+
+        if (existingNotes.has(oldNote.id)) continue;
 
         let content =
             oldNote.content ||
@@ -5050,6 +4636,152 @@ function dataUrlToBlob(
    起動
 ========================================================= */
 
+/* Tap-based paragraph formatting and explicit photo insertion positions. */
+let paragraphDialog = null;
+const paragraphSelector = 'p,div,li,h1,h2,h3,h4,h5,h6,blockquote,pre';
+
+function paragraphBlocks(editor) {
+    // Wrap only loose top-level text/inline runs. Existing blocks and photos survive.
+    let run = null;
+    for (const node of [...editor.childNodes]) {
+        if (node.nodeType === 1 && node.matches(paragraphSelector + ',ul,ol,table,hr')) {
+            run = null;
+        } else if (node.nodeName === 'BR') {
+            if (!run) { run = document.createElement('div'); editor.insertBefore(run, node); }
+            run.append(node);
+            run = null;
+        } else {
+            if (!run) { run = document.createElement('div'); editor.insertBefore(run, node); }
+            run.append(node);
+        }
+    }
+    if (!editor.firstChild) editor.innerHTML = '<div><br></div>';
+    return [...editor.querySelectorAll(paragraphSelector)].filter(node => !node.querySelector(paragraphSelector));
+}
+
+function closeParagraphDialog() {
+    if (!paragraphDialog) return;
+    paragraphDialog.remove();
+    paragraphDialog = null;
+}
+
+function paragraphSummary(block, index) {
+    const text = (block.textContent || '').trim();
+    const photos = block.querySelectorAll('img').length;
+    return `${index + 1}. ${text || (photos ? '写真' : '空の段落')}${photos && text ? ' 📷' : ''}`;
+}
+
+function openParagraphDialog(editor, note, mode) {
+    if (!editor?.isConnected || !data.notes.some(n => n.id === note.id)) return;
+    closeParagraphDialog();
+    const blocks = paragraphBlocks(editor);
+    const dialog = document.createElement('dialog');
+    dialog.className = 'paragraph-dialog';
+    dialog.setAttribute('aria-label', mode === 'photo' ? '写真を入れる場所' : '段落ごとの文字サイズ');
+    const header = document.createElement('div');
+    header.className = 'paragraph-dialog-header';
+    const heading = document.createElement('h2');
+    heading.textContent = mode === 'photo' ? '写真を入れる場所' : '段落ごとの文字サイズ';
+    const close = document.createElement('button');
+    close.textContent = '完了';
+    close.onclick = closeParagraphDialog;
+    header.append(heading, close);
+    dialog.append(header);
+    const hint = document.createElement('p');
+    hint.textContent = mode === 'photo'
+        ? '入れたい場所の「＋」を押して写真を選びます。'
+        : '変えたい段落の「標準」か「大」を押してください。ほかの段落は変わりません。';
+    dialog.append(hint);
+    const addPosition = (reference, after) => {
+        const button = document.createElement('button');
+        button.className = 'photo-position';
+        button.textContent = after ? '＋ この段落のあとに写真を入れる' : '＋ ノートの先頭に写真を入れる';
+        button.onclick = () => {
+            const range = document.createRange();
+            if (after) range.setStartAfter(reference);
+            else range.setStart(editor, 0);
+            range.collapse(true);
+            closeParagraphDialog();
+            insertPhoto(editor, note, range);
+        };
+        dialog.append(button);
+    };
+    if (mode === 'photo') addPosition(null, false);
+    blocks.forEach((block, index) => {
+        const row = document.createElement('section');
+        row.className = 'paragraph-choice';
+        const preview = document.createElement('div');
+        preview.className = 'paragraph-preview';
+        preview.textContent = paragraphSummary(block, index);
+        row.append(preview);
+        // Show actual thumbnails to distinguish positions around existing photos.
+        block.querySelectorAll('img').forEach(img => {
+            const thumbnail = document.createElement('img');
+            thumbnail.src = img.src;
+            thumbnail.alt = 'この段落の写真';
+            row.append(thumbnail);
+        });
+        if (mode === 'size') {
+            const controls = document.createElement('div');
+            controls.className = 'paragraph-size-controls';
+            const buttons = [];
+            const refresh = () => buttons.forEach(({button, size}) => {
+                button.setAttribute('aria-pressed', String(getComputedStyle(block).fontSize === `${size}px`));
+            });
+            for (const [label, size] of [['標準',16],['大',21]]) {
+                const button = document.createElement('button');
+                button.textContent = label;
+                button.setAttribute('aria-label', `${index + 1}番目の段落を${label}にする`);
+                buttons.push({button, size});
+                button.onclick = async () => {
+                    // If a user previously used the whole-note override, retain that
+                    // appearance on other paragraphs when converting to local sizes.
+                    if (note.uniformFont) {
+                        const oldSize = getNoteFontSize(note) === 'large' ? 21 : 16;
+                        blocks.forEach(p => setParagraphSize(p, oldSize));
+                        note.uniformFont = false;
+                        editor.classList.remove('uniform-font');
+                    }
+                    setParagraphSize(block, size);
+                    note.content = serializeEditor(editor);
+                    refresh();
+                    await saveNote(note);
+                };
+                controls.append(button);
+            }
+            row.append(controls);
+            refresh();
+        }
+        dialog.append(row);
+        if (mode === 'photo') addPosition(block, true);
+    });
+    dialog.addEventListener('cancel', e => {e.preventDefault(); closeParagraphDialog();});
+    document.body.append(dialog);
+    paragraphDialog = dialog;
+    dialog.showModal();
+}
+
+function setParagraphSize(block, size) {
+    block.style.fontSize = `${size}px`;
+    // Clear only font-size overrides in this paragraph, preserving all other markup.
+    block.querySelectorAll('[style],font[size]').forEach(child => {
+        child.style.removeProperty('font-size');
+        if (child.nodeName === 'FONT') child.removeAttribute('size');
+    });
+}
+
+function attachParagraphTools(editor, note, tools) {
+    const size = document.createElement('button');
+    size.className = 'text-size-button';
+    size.textContent = '🔤 段落の文字サイズ';
+    size.onclick = () => openParagraphDialog(editor, note, 'size');
+    const photo = document.createElement('button');
+    photo.textContent = '📷 写真を追加';
+    photo.onclick = () => openParagraphDialog(editor, note, 'photo');
+    tools.append(size, photo);
+}
+
+
 async function init() {
 
     try {
@@ -5124,11 +4856,19 @@ if ("serviceWorker" in navigator) {
 
             navigator.serviceWorker
                 .register(
-                    "./service-worker.js"
+                    "./service-worker.js", {updateViaCache: "none"}
                 )
                 .then(
                     registration => {
 
+                        const notifyUpdate = () => {
+                            if (registration.waiting) document.getElementById("storageInfo").textContent = "更新の準備ができました。My Noteの画面をすべて閉じて開き直すと反映されます。";
+                        };
+                        notifyUpdate();
+                        registration.addEventListener("updatefound", () => {
+                            registration.installing?.addEventListener("statechange", notifyUpdate);
+                        });
+                        registration.update().catch(console.warn);
                         console.log(
                             "Service Worker登録完了",
                             registration

@@ -1,152 +1,36 @@
-const CACHE_NAME = "my-note-v2";
+// Change RELEASE whenever publishing an application change.
+const RELEASE = "2026-09-13-4";
+const PREFIX = "my-note-" + encodeURIComponent(self.registration.scope) + "-";
+const CACHE_NAME = PREFIX + RELEASE;
+const APP_FILES = ["./", "./index.html", "./manifest.json"];
+const APP_URLS = APP_FILES.map(path => new URL(path, self.registration.scope).href);
 
-const APP_FILES = [
-    "./",
-    "./index.html",
-    "./manifest.json"
-];
+self.addEventListener("install", event => {
+    event.waitUntil((async () => {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.addAll(APP_URLS.map(url => new Request(url, {cache: "reload"})));
+    })());
+    // Activate after existing windows close; never interrupt editing.
+});
 
+self.addEventListener("activate", event => {
+    event.waitUntil((async () => {
+        const names = await caches.keys();
+        await Promise.all(names.filter(name => name.startsWith(PREFIX) && name !== CACHE_NAME)
+            .map(name => caches.delete(name)));
+        await self.clients.claim();
+    })());
+});
 
-/* =========================================================
-   インストール
-========================================================= */
-
-self.addEventListener(
-    "install",
-    event => {
-
-        event.waitUntil(
-
-            caches.open(
-                CACHE_NAME
-            ).then(
-                cache => {
-
-                    return cache.addAll(
-                        APP_FILES
-                    );
-
-                }
-            )
-
-        );
-
-        self.skipWaiting();
-
-    }
-);
-
-
-/* =========================================================
-   有効化
-========================================================= */
-
-self.addEventListener(
-    "activate",
-    event => {
-
-        event.waitUntil(
-
-            caches.keys().then(
-                cacheNames => {
-
-                    return Promise.all(
-
-                        cacheNames
-                            .filter(
-                                cacheName =>
-                                    cacheName !==
-                                    CACHE_NAME
-                            )
-                            .map(
-                                cacheName =>
-                                    caches.delete(
-                                        cacheName
-                                    )
-                            )
-
-                    );
-
-                }
-            )
-
-        );
-
-        self.clients.claim();
-
-    }
-);
-
-
-/* =========================================================
-   オフライン対応
-========================================================= */
-
-self.addEventListener(
-    "fetch",
-    event => {
-
-        event.respondWith(
-
-            caches.match(
-                event.request
-            ).then(
-                cachedResponse => {
-
-                    if (cachedResponse) {
-
-                        return cachedResponse;
-
-                    }
-
-                    return fetch(
-                        event.request
-                    ).then(
-                        response => {
-
-                            /*
-                             * GET以外はキャッシュしない
-                             */
-                            if (
-                                event.request.method !==
-                                "GET"
-                            ) {
-
-                                return response;
-
-                            }
-
-                            /*
-                             * 通常のWebページなども
-                             * 次回のために保存
-                             */
-                            const responseClone =
-                                response.clone();
-
-
-                            caches.open(
-                                CACHE_NAME
-                            ).then(
-                                cache => {
-
-                                    cache.put(
-                                        event.request,
-                                        responseClone
-                                    );
-
-                                }
-                            );
-
-
-                            return response;
-
-                        }
-                    );
-
-                }
-            )
-
-        );
-
-    }
-);
+self.addEventListener("fetch", event => {
+    const request = event.request;
+    if (request.method !== "GET") return;
+    const url = new URL(request.url);
+    url.search = "";
+    if (!APP_URLS.includes(url.href)) return;
+    event.respondWith((async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(url.href);
+        return cached || fetch(request);
+    })());
+});

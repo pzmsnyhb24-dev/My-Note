@@ -1,10 +1,12 @@
 {
-    "name": "My Note",
-    "short_name": "My Note",
-    "description": "シンプルな個人用ノートアプリ",
-    "start_url": "./",
-    "display": "standalone",
-    "background_color": "#f5f5f7",
-    "theme_color": "#ffffff",
-    "orientation": "portrait"
+  "name": "My Note",
+  "short_name": "My Note",
+  "description": "シンプルな個人用ノートアプリ",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#ffffff",
+  "orientation": "portrait",
+  "scope": "./",
+  "lang": "ja"
 }
